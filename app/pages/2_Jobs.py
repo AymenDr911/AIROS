@@ -1,117 +1,79 @@
-import os
 import sys
+from pathlib import Path
+
+# Add project root directory (.../AIROS) to Python path
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 import streamlit as st
-
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-)
-
-from database.crud import add_job_offer, get_all_jobs
-from database.db import init_db
+from database.crud import add_job_offer, get_all_jobs, delete_job
 from utils.nav import render_sidebar
 
-st.set_page_config(page_title="AIROS - Job Offers", layout="wide")
-init_db()
+st.set_page_config(page_title="AIROS - Jobs", page_icon="💼", layout="wide")
+
 render_sidebar()
 
-
-# Page Configuration
-st.set_page_config(page_title="AIROS - Job Offers", layout="wide")
-init_db()
-
 st.title("💼 Job Offers Manager")
-st.markdown(
-    "Save and categorize target job postings to prepare for ATS matching."
-)
+st.markdown("Save and organize target job postings before running ATS comparisons.")
 
-st.divider()
-
-# --- FORM TO ADD A NEW JOB OFFER ---
 st.subheader("➕ Add New Job Listing")
 
 with st.form("add_job_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
-
     with col1:
-        title = st.text_input(
-            "Job Title *", placeholder="e.g. Senior ERP Project Manager"
-        )
-        company_name = st.text_input("Company Name *", placeholder="e.g. SAP")
-        location = st.text_input(
-            "Location", placeholder="e.g. Remote / Germany / France"
-        )
-
+        title = st.text_input("Job Title *", placeholder="e.g. Senior ERP Project Manager")
+        company = st.text_input("Company Name *", placeholder="e.g. SAP / Odoo / Microsoft")
+        location = st.text_input("Location", placeholder="e.g. Remote / France / Germany / Tunisia")
     with col2:
-        target_role_category = st.selectbox(
-            "Role Category *",
-            [
-                "ERP Project Manager",
-                "IT Program Manager",
-                "Project Controller",
-                "Business Analyst",
-                "PMO Manager",
-                "Other",
-            ],
-        )
-        url = st.text_input(
-            "Job URL (Optional)",
-            placeholder="https://linkedin.com/jobs/view/...",
-        )
+        role_category = st.selectbox("Role Category *", ["ERP Project Manager", "IT Program Manager", "Scrum Master / Agile Lead", "Solution Architect", "Other"])
+        work_type = st.selectbox("Work Type", ["Full-time", "Contract / Freelance", "Part-time"])
+        url = st.text_input("Job URL (Optional)", placeholder="https://linkedin.com/jobs/view/...")
 
-    description = st.text_area(
-        "Job Description *",
-        height=250,
-        placeholder="Paste full job description text here (requirements, responsibilities, skills)...",
-    )
+    description = st.text_area("Job Description *", placeholder="Paste full job description text here...", height=200)
+    questions = st.text_area("Specific Application Questions (Optional)", placeholder="Paste custom application questions...", height=80)
 
     submitted = st.form_submit_button("💾 Save Job Offer")
 
     if submitted:
-        if not title.strip() or not company_name.strip() or not description.strip():
-            st.error(
-                "Please fill in all required fields (Title, Company, and Description)."
-            )
+        if not title or not company or not description:
+            st.error("Please fill in all required fields (Job Title, Company Name, Job Description).")
         else:
-            add_job_offer(
+            job_id = add_job_offer(
                 title=title,
-                company_name=company_name,
-                target_role_category=target_role_category,
+                company=company,
+                role_category=role_category,
                 location=location,
+                work_type=work_type,
                 url=url,
                 description=description,
+                questions=questions
             )
-            st.success(
-                f"Job offer '{title}' at {company_name} saved successfully!"
-            )
+            st.success(f"✅ Job offer saved successfully with ID: {job_id}")
             st.rerun()
 
 st.divider()
-
-# --- DISPLAY EXISTING JOBS LIST ---
 st.subheader("📋 Saved Job Listings")
 
-saved_jobs = get_all_jobs()
+jobs = get_all_jobs()
 
-if not saved_jobs:
+if not jobs:
     st.info("No job listings saved yet. Use the form above to add your first job posting.")
 else:
-    for job in saved_jobs:
-        with st.expander(
-            f"📍 **{job['title']}** — {job['company_name']} ({job['target_role_category'] or 'General'})"
-        ):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.caption(f"**Location:** {job['location'] or 'N/A'}")
-                st.caption(f"**Added On:** {job['created_at']}")
-            with col_b:
-                if job["url"]:
-                    st.caption(f"**Link:** [Job Posting URL]({job['url']})")
-
-            st.markdown("---")
-            st.text_area(
-                "Description",
-                value=job["description"],
-                height=150,
-                disabled=True,
-                key=f"desc_{job['id']}",
-            )
+    for job in jobs:
+        with st.expander(f"💼 {job['title']} @ {job['company']} (ID: {job['id']})"):
+            c1, c2, c3 = st.columns(3)
+            c1.write(f"**Category:** {job['role_category'] or 'N/A'}")
+            c2.write(f"**Location:** {job['location'] or 'N/A'}")
+            c3.write(f"**Work Type:** {job['work_type'] or 'N/A'}")
+            
+            if job['url']:
+                st.markdown(f"🔗 [View Job Announcement]({job['url']})")
+            
+            st.markdown("**Description:**")
+            st.text_area("Description Text", value=job['description'], height=120, disabled=True, key=f"desc_{job['id']}")
+            
+            if st.button("🗑️ Delete Job", key=f"del_{job['id']}"):
+                delete_job(job['id'])
+                st.success("Job deleted successfully.")
+                st.rerun()
