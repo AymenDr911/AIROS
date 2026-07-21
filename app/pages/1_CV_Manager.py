@@ -1,4 +1,10 @@
+import os
+import sys
 import streamlit as st
+
+# Add project root to Python search path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
 from database.db import init_db
 from database.crud import save_master_cv, get_master_cv
 
