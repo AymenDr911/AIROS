@@ -2,51 +2,38 @@ import os
 import sys
 import streamlit as st
 
-# Add project root directory to Python path
+# Add project root directory to Python search path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
 from database.crud import get_dashboard_metrics
 from database.db import init_db
+from utils.nav import render_sidebar
 
-# Initialize page config & database
+# Page Configuration
 st.set_page_config(page_title="AIROS - Dashboard", layout="wide")
 init_db()
+render_sidebar()
 
-# Custom Sidebar Navigation
-st.sidebar.title("AIROS")
-st.sidebar.caption("Recruitment Operating System")
-st.sidebar.markdown("---")
-
-st.sidebar.subheader("Menu")
-
-# Navigation buttons using st.switch_page
-if st.sidebar.button("💼 Jobs", use_container_width=True):
-    st.info("Jobs page coming up next!")
-
-if st.sidebar.button("🎯 ATS Analyzer", use_container_width=True):
-    st.info("ATS Analyzer page coming soon!")
-
-if st.sidebar.button("📄 CV Manager", use_container_width=True):
-    st.switch_page("pages/1_CV_Manager.py")
-
-if st.sidebar.button("📋 Applications", use_container_width=True):
-    st.info("Applications page coming soon!")
-
-if st.sidebar.button("📊 Analytics", use_container_width=True):
-    st.info("Analytics page coming soon!")
-
-# Main Dashboard Content
-st.title("Dashboard")
-st.write("Welcome back.")
+st.title("🏠 Dashboard")
+st.markdown("Welcome back to **AIROS**.")
 
 st.divider()
 
-# Fetch live metrics from DB
+# --- METRICS DISPLAY ---
 metrics = get_dashboard_metrics()
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Applications", metrics["applications"])
-col2.metric("Interviews", metrics["interviews"])
-col3.metric("ATS Average Score", f"{metrics['avg_ats']}%")
+
+with col1:
+    st.metric(label="Applications", value=metrics.get("applications_count", 0))
+
+with col2:
+    st.metric(label="Interviews", value=metrics.get("interviews_count", 0))
+
+with col3:
+    st.metric(
+        label="ATS Average Score",
+        value=f"{metrics.get('avg_ats_score', 0.0):.1f}%",
+    )

@@ -2,13 +2,18 @@ import os
 import sys
 import streamlit as st
 
-# Add project root directory to Python search path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 )
 
 from database.crud import add_job_offer, get_all_jobs
 from database.db import init_db
+from utils.nav import render_sidebar
+
+st.set_page_config(page_title="AIROS - Job Offers", layout="wide")
+init_db()
+render_sidebar()
+
 
 # Page Configuration
 st.set_page_config(page_title="AIROS - Job Offers", layout="wide")

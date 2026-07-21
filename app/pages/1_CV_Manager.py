@@ -2,10 +2,19 @@ import os
 import sys
 import streamlit as st
 
-# Move UP two levels (from app/pages/ to the root AIROS folder)
+# Add project root directory to Python search path
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 )
+
+from database.crud import get_master_cv, save_master_cv
+from database.db import init_db
+from utils.nav import render_sidebar
+
+# Page Configuration
+st.set_page_config(page_title="AIROS - CV Manager", layout="wide")
+init_db()
+render_sidebar()
 
 from database.crud import get_master_cv, save_master_cv
 from database.db import init_db
