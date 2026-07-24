@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PGMP QCM Exam</title>
+  <style>
+    :root {
+      --primary: #1f4e79;
+      --primary-2: #2b6cb0;
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #dbe3ee;
+      --success: #1a7f37;
+      --danger: #b91c1c;
+      --warning: #b45309;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 18px 48px;
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-2));
+      color: white;
+      border-radius: 16px;
+      padding: 22px 24px;
+      box-shadow: 0 8px 24px rgba(31, 78, 121, 0.12);
+    }
+
+    .header h1 { margin: 0 0 6px; font-size: 28px; }
+    .header p { margin: 0; color: rgba(255,255,255,0.9); }
+
+    .top-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin: 18px 0;
+    }
+
+    .status-card {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+
+    .status-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 12px;
+      background: #e5edf7;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--primary), #4f8dd6);
+      transition: width 0.3s ease;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+      font-size: 14px;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      background: white;
+      color: var(--text);
+      padding: 10px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 700;
+      transition: 0.2s ease;
+    }
+
+    .btn:hover { border-color: var(--primary-2); }
+    .btn.primary {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .btn.secondary {
+      background: #eef5ff;
+      color: var(--primary);
+      border-color: #cfe0f7;
+    }
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+
+    .q-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .q-head h3 {
+      margin: 0;
+      color: var(--primary);
+      font-size: 18px;
+    }
+
+    .copy-btn {
+      font-size: 13px;
+      padding: 8px 12px;
+      border-radius: 999px;
+    }
+
+    .question {
+      margin: 0 0 14px;
+      font-weight: 600;
+    }
+
+    .options {
+      display: grid;
+      gap: 10px;
+    }
+
+    .option {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: #fbfdff;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .option:hover { border-color: #9bbbe2; }
+    .option input { margin-top: 4px; }
+
+    .option-label {
+      flex: 1;
+    }
+
+    .answer-review {
+      margin-top: 12px;
+      border-top: 1px dashed var(--border);
+      padding-top: 12px;
+      display: none;
+    }
+
+    .answer-review.show { display: block; }
+    .correct { color: var(--success); font-weight: 700; }
+    .wrong { color: var(--danger); font-weight: 700; }
+    .argument, .suggestion {
+      margin: 6px 0 0;
+    }
+    .suggestion { color: #4b5563; font-style: italic; }
+
+    .summary {
+      display: none;
+      margin-top: 18px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+    .summary.show { display: block; }
+
+    .summary h2 { margin-top: 0; color: var(--primary); }
+
+    .score-box {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .score-card {
+      background: #f8fbff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .score-card .num {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+
+    .review-item {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      margin-top: 12px;
+    }
+
+    .review-item h4 {
+      margin: 0 0 6px;
+      color: var(--primary);
+    }
+
+    .muted { color: var(--muted); }
+
+    @media (max-width: 800px) {
+      .top-grid, .score-box { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>PGMP QCM Exam</h1>
+      <p>Select one answer per question, then submit to see your score and explanations.</p>
+    </div>
+
+    <div class="top-grid">
+      <div class="status-card">
+        <div class="status-title">
+          <span>Question Progress</span>
+          <span id="qProgressText">0 / 10</span>
+        </div>
+        <div class="progress-bar"><div id="qProgressFill" class="progress-fill"></div></div>
+        <div class="meta-row">
+          <span id="questionCount">10 questions</span>
+          <span id="answeredCount">0 answered</span>
+        </div>
+      </div>
+
+      <div class="status-card">
+        <div class="status-title">
+          <span>Time Progress</span>
+          <span id="timeText">00:00</span>
+        </div>
+        <div class="progress-bar"><div id="timeFill" class="progress-fill"></div></div>
+        <div class="meta-row">
+          <span>Session timer</span>
+          <span id="timeRemaining">Remaining: 00:00</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn secondary" onclick="copyAllQuestions()">Copy Questions</button>
+      <button id="submitBtn" class="btn primary" onclick="submitExam()">Submit Exam</button>
+      <button id="resetBtn" class="btn" onclick="resetExam()">Reset</button>
+      <button id="reviewBarBtn" class="btn" disabled>Review Answers</button>
+    </div>
+
+    <div id="quiz"></div>
+
+    <div id="summary" class="summary">
+      <h2>Exam Results</h2>
+      <div class="score-box">
+        <div class="score-card"><div class="num" id="scoreValue">0</div><div>Score</div></div>
+        <div class="score-card"><div class="num" id="correctValue">0</div><div>Correct</div></div>
+        <div class="score-card"><div class="num" id="wrongValue">0</div><div>Wrong</div></div>
+      </div>
+      <div id="reviewList"></div>
+    </div>
+  </div>
+
+  <script>
+    const timeLimitSeconds = 30 * 60; // 30 minutes
+    let elapsedSeconds = 0;
+    let timer = null;
+    let examSubmitted = false;
+
+    const questions = [
+      {
+        text: "A programme closes, but three planned benefits remain below target because operational integration is incomplete. What should the programme manager do first?",
+        options: [
+          "A. Proceed with closure and transfer accountability immediately",
+          "B. Revise the benefits register and close the programme",
+          "C. Assess the transition gap and present its impact to programme governance",
+          "D. Confirm that all benefits will be achieved later"
+        ],
+        answer: "C",
+        argument: "The first step is to understand why benefits are below target and how the transition gap affects realisation. Governance then decides what to do next.",
+        suggestion: "When benefits miss target, always ask: is the issue measurement, transition, or realisation?"
+      },
+      {
+        text: "During benefits delivery, a new technology could raise a key benefit by 40% but would require a new component and delay two existing components by two months. What should the programme manager do first?",
+        options: [
+          "A. Implement the technology immediately",
+          "B. Evaluate the opportunity’s effect on benefits, dependencies, cost, schedule, and risk",
+          "C. Ask component managers to confirm feasibility before analysis",
+          "D. Update the benefits register and submit it for approval"
+        ],
+        answer: "B",
+        argument: "Opportunities must first be analysed for whole-programme impact before any proposal or implementation.",
+        suggestion: "In benefit opportunities, think impact first, change later."
+      },
+      {
+        text: "Two stakeholder groups depend on different programme benefits, but the technical solutions cannot coexist under the current architecture. Budget and schedule cannot support both. What should the programme manager do first?",
+        options: [
+          "A. Fund both solutions",
+          "B. Keep both benefits and the baseline unchanged",
+          "C. Analyse benefit trade-offs and present prioritisation options to governance",
+          "D. Delay one benefit without review"
+        ],
+        answer: "C",
+        argument: "Conflicting, incompatible benefits require trade-off analysis and governance decision-making.",
+        suggestion: "If two benefits cannot coexist, move to prioritisation, not parallel execution."
+      },
+      {
+        text: "A programme is approaching closure, but monthly benefits sustainment reporting for the next 12 months has no owner. What should the programme manager do?",
+        options: [
+          "A. Close the programme and record the gap as an open action",
+          "B. Retain programme oversight until the reporting period ends",
+          "C. Assign reporting accountability through formal handover and update sustainment arrangements",
+          "D. Let operations decide later"
+        ],
+        answer: "C",
+        argument: "Closure requires formal transfer of accountability and clear sustainment arrangements before the programme ends.",
+        suggestion: "Before closure, verify who owns the post-programme reporting and sustainment."
+      },
+      {
+        text: "Three years into a programme, benefits are 15 million below target, but a major intangible benefit was defined without indicators, baselines, or a measurement method. What should the programme manager do first?",
+        options: [
+          "A. Revise the target using available reputation data",
+          "B. Revalidate the benefits measurement approach and reassess the variance",
+          "C. Exclude the benefit from the plan",
+          "D. Submit a revised report using proxy indicators immediately"
+        ],
+        answer: "B",
+        argument: "If a benefit cannot be measured properly, the measurement approach must be validated before judging performance variance.",
+        suggestion: "Don’t trust benefit variance until the measurement method is sound."
+      },
+      {
+        text: "During programme initiation, the sponsor provides an initial stakeholder list, but the programme manager identifies external parties that may influence approvals, public acceptance, and environmental outcomes. What should the programme manager do first?",
+        options: [
+          "A. Validate and expand the stakeholder list through structured identification analysis",
+          "B. Wait for sponsor confirmation",
+          "C. Add only regulatory stakeholders now",
+          "D. Prioritise the list before identifying missing parties"
+        ],
+        answer: "A",
+        argument: "Stakeholder identification is ongoing and should be expanded through a structured process as new parties are discovered.",
+        suggestion: "In programmes, identify stakeholders continuously, not just at initiation."
+      },
+      {
+        text: "Which document should contain stakeholders’ role, expectations, influence, interest, and potential impact on the programme?",
+        options: [
+          "A. Stakeholder engagement plan",
+          "B. Stakeholder register",
+          "C. Communications management plan",
+          "D. Issue log"
+        ],
+        answer: "B",
+        argument: "The stakeholder register stores identification and assessment information, including influence, interest, and impact.",
+        suggestion: "If the question asks who they are and what they can do, think stakeholder register."
+      },
+      {
+        text: "A governance review finds inconsistent messages, duplicated interactions, and different escalation practices across eight component projects that share stakeholders. What should the programme manager do?",
+        options: [
+          "A. Let each component manage its own stakeholder approach independently",
+          "B. Standardise stakeholder reporting only",
+          "C. Establish stakeholder engagement guidance at programme level and align component approaches",
+          "D. Escalate all stakeholder communications to the sponsor"
+        ],
+        answer: "C",
+        argument: "Shared stakeholders need coordinated, programme-level guidance to avoid confusion and duplication.",
+        suggestion: "Shared stakeholders = one aligned message, not eight different ones."
+      },
+      {
+        text: "A programme has a high-power, high-interest stakeholder conflict between the CFO, who wants cost reduction, and the COO, who wants faster delivery with more resources. The programme cannot satisfy both demands. What should the programme manager do first?",
+        options: [
+          "A. Accept the CFO’s demand",
+          "B. Accept the COO’s demand",
+          "C. Facilitate a steering committee session to review trade-offs and let the committee decide",
+          "D. Escalate to the sponsor to overrule both"
+        ],
+        answer: "C",
+        argument: "When powerful stakeholders conflict, the programme manager should facilitate governance-level trade-off discussion.",
+        suggestion: "For high-power conflicts, don’t choose a side—use governance."
+      },
+      {
+        text: "A risk identified in one programme may also affect another programme in the portfolio. The programme manager can resolve the internal exposure, but the cross-programme impact is outside programme authority. What should the programme manager do?",
+        options: [
+          "A. Transfer the risk entirely to portfolio management and stop programme action",
+          "B. Manage the internal exposure and escalate the cross-programme impact through portfolio governance",
+          "C. Ignore the other programme’s exposure",
+          "D. Wait until the portfolio manager asks for a report"
+        ],
+        answer: "B",
+        argument: "The programme manager should handle what is within programme authority and escalate broader impact through the correct governance path.",
+        suggestion: "Manage what you can, escalate what crosses your authority."
+      }
+    ];
+
+    const quizEl = document.getElementById('quiz');
+    const summaryEl = document.getElementById('summary');
+    const reviewListEl = document.getElementById('reviewList');
+    const qProgressFill = document.getElementById('qProgressFill');
+    const qProgressText = document.getElementById('qProgressText');
+    const answeredCountEl = document.getElementById('answeredCount');
+    const timeFill = document.getElementById('timeFill');
+    const timeText = document.getElementById('timeText');
+    const timeRemaining = document.getElementById('timeRemaining');
+    const submitBtn = document.getElementById('submitBtn');
+    const reviewBarBtn = document.getElementById('reviewBarBtn');
+
+    function renderQuiz() {
+      quizEl.innerHTML = '';
+      questions.forEach((q, index) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="q-head">
+            <h3>Question ${index + 1}</h3>
+            <button class="btn copy-btn" onclick="copyQuestion(${index})">Copy</button>
+          </div>
+          <p class="question">${q.text}</p>
+          <div class="options">
+            ${q.options.map((opt, i) => `
+              <label class="option">
+                <input type="radio" name="q${index}" value="${String.fromCharCode(65 + i)}" />
+                <span class="option-label">${opt}</span>
+              </label>
+            `).join('')}
+          </div>
+          <div id="review-${index}" class="answer-review"></div>
+        `;
+        quizEl.appendChild(card);
+      });
+
+      document.querySelectorAll('input[type="radio"]').forEach(r => {
+        r.addEventListener('change', updateProgress);
+      });
+      updateProgress();
+    }
+
+    function copyQuestion(index) {
+      const q = questions[index];
+      const text = `Question ${index + 1}: ${q.text}\n${q.options.join('\n')}`;
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+
+    function copyAllQuestions() {
+      const text = questions.map((q, i) => `Question ${i + 1}: ${q.text}\n${q.options.join('\n')}`).join('\n\n');
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+
+    function getSelectedAnswer(index) {
+      const selected = document.querySelector(`input[name="q${index}"]:checked`);
+      return selected ? selected.value : null;
+    }
+
+    function updateProgress() {
+      const answered = questions.filter((_, i) => getSelectedAnswer(i)).length;
+      const pct = Math.round((answered / questions.length) * 100);
+      qProgressFill.style.width = pct + '%';
+      qProgressText.textContent = `${answered} / ${questions.length}`;
+      answeredCountEl.textContent = `${answered} answered`;
+    }
+
+    function startTimer() {
+      timer = setInterval(() => {
+        if (examSubmitted) return;
+        elapsedSeconds++;
+        const elapsedPct = Math.min(100, Math.round((elapsedSeconds / timeLimitSeconds) * 100));
+        timeFill.style.width = elapsedPct + '%';
+        timeText.textContent = formatTime(elapsedSeconds);
+        const remaining = Math.max(0, timeLimitSeconds - elapsedSeconds);
+        timeRemaining.textContent = `Remaining: ${formatTime(remaining)}`;
+        if (remaining === 0) submitExam();
+      }, 1000);
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function submitExam() {
+      if (examSubmitted) return;
+      examSubmitted = true;
+      clearInterval(timer);
+      submitBtn.disabled = true;
+      reviewBarBtn.disabled = false;
+
+      let correct = 0;
+      let wrong = 0;
+      reviewListEl.innerHTML = '';
+
+      questions.forEach((q, index) => {
+        const selected = getSelectedAnswer(index);
+        const isCorrect = selected === q.answer;
+        if (isCorrect) correct++; else wrong++;
+
+        const review = document.getElementById(`review-${index}`);
+        review.classList.add('show');
+        review.innerHTML = `
+          <p><strong>Your answer:</strong> ${selected ? selected : '<span class="muted">No answer</span>'}</p>
+          <p><strong>Correct answer:</strong> <span class="correct">${q.answer}</span></p>
+          <p class="argument"><strong>Argument:</strong> ${q.argument}</p>
+          <p class="suggestion"><strong>Smart suggestion:</strong> ${q.suggestion}</p>
+        `;
+
+        const reviewItem = document.createElement('div');
+        reviewItem.className = 'review-item';
+        reviewItem.innerHTML = `
+          <h4>Question ${index + 1} - ${isCorrect ? '<span class="correct">Correct</span>' : '<span class="wrong">Wrong</span>'}</h4>
+          <p><strong>Your answer:</strong> ${selected ? selected : 'No answer'}</p>
+          <p><strong>Correct answer:</strong> ${q.answer}</p>
+          <p><strong>Argument:</strong> ${q.argument}</p>
+          <p><strong>Suggestion:</strong> ${q.suggestion}</p>
+        `;
+        reviewListEl.appendChild(reviewItem);
+      });
+
+      document.getElementById('scoreValue').textContent = correct;
+      document.getElementById('correctValue').textContent = correct;
+      document.getElementById('wrongValue').textContent = wrong;
+      summaryEl.classList.add('show');
+      summaryEl.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function resetExam() {
+      location.reload();
+    }
+
+    reviewBarBtn.addEventListener('click', () => {
+      if (!examSubmitted) return;
+      summaryEl.scrollIntoView({ behavior: 'smooth' });
+    });
+
+    renderQuiz();
+    startTimer();
+  </script>
+</body>
+</html>

@@ -1,40 +1,125 @@
-import sys
-from pathlib import Path
-
-# Add project root directory (.../AIROS) to Python path
-ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
-
+import docx
+from pypdf import PdfReader
 import streamlit as st
-from database.crud import save_master_cv, get_latest_master_cv
-from utils.nav import render_sidebar
 
-st.set_page_config(page_title="AIROS - CV Manager", page_icon="📄", layout="wide")
+# 1. Page configuration
+st.set_page_config(
+    page_title="Master CV Manager",
+    page_icon="📄",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-render_sidebar()
+# 2. Render Navigation Sidebar (MATCHING FUNCTION NAME)
+try:
+  from utils.nav import render_sidebar
 
-st.title("📄 Master CV Manager")
-st.markdown("Store and maintain your core Master CV text to serve as the baseline for ATS tailoring.")
+  render_sidebar()
+except Exception as e:
+  st.sidebar.error(f"Nav render error: {e}")
 
-current_cv = get_latest_master_cv()
+# 3. Local imports
+from utils.cv_manager import get_master_cv, save_master_cv
 
-if current_cv:
-    st.success(f"✅ Active Master CV Loaded: **{current_cv['title']}** (Target Role: {current_cv['target_role'] or 'N/A'})")
 
-st.subheader("📝 Update Baseline Master CV")
 
-with st.form("master_cv_form"):
-    title = st.text_input("CV Profile Title", value=current_cv['title'] if current_cv else "Master CV - Senior IT Program Manager")
-    target_role = st.text_input("Target Role Category", value=current_cv['target_role'] if current_cv else "ERP Program / Project Manager")
-    raw_text = st.text_area("Master CV Plain Text", value=current_cv['raw_text'] if current_cv else "", height=350, placeholder="Paste complete baseline CV text here...")
+# ==============================================================================
+# 4. STORED DATA LOADING
+# ==============================================================================
+raw_text, parsed_json = get_master_cv()
 
-    submitted = st.form_submit_button("💾 Save Master CV")
+st.title("📄 Master CV Knowledge Base")
 
-    if submitted:
-        if not title or not raw_text:
-            st.error("Please fill in both the CV Title and CV Text fields.")
-        else:
-            cv_id = save_master_cv(title=title, target_role=target_role, raw_text=raw_text)
-            st.success(f"✅ Master CV updated successfully (ID: {cv_id})!")
-            st.rerun()
+# ==============================================================================
+# 5. INPUT OPTIONS
+# ==============================================================================
+st.subheader("1. Update Master CV")
+active_tab = st.radio(
+    "Select Input Method:",
+    ["📋 Paste Text", "📁 Upload File (PDF/DOCX/TXT)"],
+    horizontal=True,
+)
+
+input_text = ""
+
+if active_tab == "📋 Paste Text":
+  input_text = st.text_area(
+      "Paste your CV text here:",
+      value=raw_text or "",
+      height=250,
+      key="pasted_cv_input",
+  )
+
+else:
+  uploaded_file = st.file_uploader(
+      "Upload Master CV File", type=["pdf", "docx", "txt"]
+  )
+  if uploaded_file:
+    ext = uploaded_file.name.split(".")[-1].lower()
+    if ext == "pdf":
+      reader = PdfReader(uploaded_file)
+      input_text = "\n".join(
+          [p.extract_text() for p in reader.pages if p.extract_text()]
+      )
+    elif ext == "docx":
+      doc = docx.Document(uploaded_file)
+      input_text = "\n".join(
+          [p.text for p in doc.paragraphs if p.text.strip()]
+      )
+    elif ext == "txt":
+      input_text = uploaded_file.read().decode("utf-8")
+
+# ==============================================================================
+# 6. SAVE & PARSE ACTION
+# ==============================================================================
+if st.button("💾 Save & Parse Master CV", type="primary"):
+  if input_text and input_text.strip():
+    with st.spinner("Calling Gemini API to extract CV metadata..."):
+      parsed_json = save_master_cv(input_text, force_reparse=True)
+
+      if parsed_json and (
+          parsed_json.get("technical_skills")
+          or parsed_json.get("mandatory_skills")
+      ):
+        st.success("Master CV parsed and saved successfully to disk!")
+      else:
+        st.error(
+            "Gemini returned an empty result. Please check the API error"
+            " messages above."
+        )
+
+      st.rerun()
+  else:
+    st.warning("Please provide CV text or upload a file first.")
+
+st.divider()
+
+# ==============================================================================
+# 7. KNOWLEDGE BASE VIEW
+# ==============================================================================
+st.subheader("2. Stored Knowledge Base")
+
+if parsed_json and (
+    parsed_json.get("technical_skills") or parsed_json.get("mandatory_skills")
+):
+  st.success(
+      "✓ Active Master CV JSON loaded from disk (0 API Calls required for ATS"
+      " runs)."
+  )
+
+  with st.expander("📊 View Structured CV (JSON)", expanded=True):
+    st.json(parsed_json)
+
+  with st.expander("📝 View Raw Text"):
+    st.text_area(
+        "Raw Text",
+        value=raw_text or "",
+        height=150,
+        disabled=True,
+        key="raw_view",
+    )
+else:
+  st.info(
+      "No valid Master CV parsed yet. Upload/Paste your CV above and click"
+      " 'Save & Parse'."
+  )

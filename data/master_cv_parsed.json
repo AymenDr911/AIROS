@@ -1,0 +1,61 @@
+{
+  "mandatory_skills": [
+    "Program Management",
+    "Project Management",
+    "ERP Implementation",
+    "Digital Transformation",
+    "Business Analysis",
+    "Requirements Engineering",
+    "Risk Management",
+    "Stakeholder Management"
+  ],
+  "technical_skills": [
+    "Odoo",
+    "SAP S/4HANA",
+    "Java",
+    "Spring Boot",
+    "React",
+    "Node.js",
+    "Docker",
+    "Kubernetes",
+    "REST APIs",
+    "EDIFACT",
+    "Python",
+    "SQL",
+    "PostgreSQL",
+    "Power BI",
+    "MongoDB",
+    "React Native",
+    "Express.js",
+    "SOAP"
+  ],
+  "experience_years": 16,
+  "certifications": [
+    "PMP",
+    "Scrum Fundamentals",
+    "Kanban Essentials",
+    "OKR Fundamentals",
+    "Six Sigma Yellow Belt"
+  ],
+  "languages": [
+    "French C1",
+    "English C1",
+    "German B1",
+    "Arabic C2"
+  ],
+  "keywords": [
+    "Agile",
+    "Scrum",
+    "Kanban",
+    "Waterfall",
+    "PMI",
+    "MRP",
+    "WMS",
+    "SaaS",
+    "B2B",
+    "B2C",
+    "GDPR",
+    "Lean Manufacturing"
+  ],
+  "has_ats_formatting": true
+}
