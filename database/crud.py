@@ -69,19 +69,39 @@ def add_job_offer(title: str, company: str, role_category: str = "", location: s
 add_job = add_job_offer
 
 def get_all_jobs():
-    """Retrieves all saved job postings."""
+    """Retrieves all saved job postings, auto-seeding a sample job if empty."""
     ensure_db_ready()
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute("SELECT * FROM jobs ORDER BY created_at DESC")
         jobs = cursor.fetchall()
+
+        # If the table exists but has 0 records, seed a starter job on the fly
+        if not jobs:
+            cursor.execute("""
+                INSERT INTO jobs (title, company, role_category, location, work_type, url, description, questions)
+                VALUES (
+                    'Senior IT Program Manager', 
+                    'IPACT Consult', 
+                    'Program Management', 
+                    'Tunis / Hybrid', 
+                    'Full-time', 
+                    'https://example.com', 
+                    'Leading cross-functional software delivery teams, managing ERP implementations, backlog refinement, and sprint planning.',
+                    'What is your experience with ERP systems?'
+                )
+            """)
+            conn.commit()
+            cursor.execute("SELECT * FROM jobs ORDER BY created_at DESC")
+            jobs = cursor.fetchall()
+
     except sqlite3.OperationalError:
         jobs = []
     finally:
         conn.close()
     return jobs
-
+    
 def get_job_by_id(job_id: int):
     """Retrieves a single job posting by ID."""
     ensure_db_ready()
