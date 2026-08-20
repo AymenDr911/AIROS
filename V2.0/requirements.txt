@@ -1,0 +1,4 @@
+streamlit==1.61.1
+pypdf==6.15.0
+python-docx==1.2.0
+SQLAlchemy>=2.0,<3.0

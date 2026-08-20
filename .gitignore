@@ -1,13 +1,4 @@
-# SQLite Database (keep local data private)
-*.db
-*.sqlite3
-
-# Python cache & environments
-__pycache__/
-*.pyc
-.venv/
 venv/
-.env
-
-# Streamlit local settings & secrets
-.streamlit/secrets.toml
+venv_corrupted/
+__pycache__/
+.DS_Store
