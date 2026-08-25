@@ -47,17 +47,18 @@ def _render_save_section(result: dict, job_text: str, parsed: dict):
         r1, r2 = st.columns(2)
         
         with r1:
-            rec_name = st.text_input("Name", placeholder="Anna Müller")
-            rec_position = st.text_input("Position", placeholder="Senior Talent Acquisition")
-            rec_email = st.text_input("Email", placeholder="anna.mueller@company.com")
+            rec_name = st.text_input("Name", placeholder="Anna Müller", key="rec_name_input")
+            rec_position = st.text_input("Position", placeholder="Senior Talent Acquisition", key="rec_position_input")
+            rec_email = st.text_input("Email", placeholder="anna.mueller@company.com", key="rec_email_input")
         
         with r2:
-            rec_linkedin = st.text_input("LinkedIn URL", placeholder="https://linkedin.com/in/...")
+            rec_linkedin = st.text_input("LinkedIn URL", placeholder="https://linkedin.com/in/...", key="rec_linkedin_input")
             rec_type = st.selectbox(
                 "Contact Type",
                 ["HR Recruiter", "Talent Acquisition", "Hiring Manager", "General"],
+                key="rec_type_input",
             )
-            rec_confidence = st.selectbox("Confidence", ["High", "Medium", "Low"], index=1)
+            rec_confidence = st.selectbox("Confidence", ["High", "Medium", "Low"], index=1, key="rec_confidence_input")
         
         save_clicked = st.form_submit_button(
             "💾 Save Job + Company + Recruiter", 
@@ -89,6 +90,7 @@ def _render_save_section(result: dict, job_text: str, parsed: dict):
                     'linkedin_url': rec_linkedin.strip(),
                     'contact_type': rec_type,
                     'confidence': rec_confidence,
+                    'source': 'Manual',
                 }
             
             # 3. Optionally create & link Contact in database

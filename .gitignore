@@ -1,4 +1,27 @@
+# AIROS repo root — secure by default
 venv/
 venv_corrupted/
 __pycache__/
 .DS_Store
+
+# Secrets (API keys) — NEVER commit
+.streamlit/secrets.toml
+secrets.toml
+.env
+*.env
+
+# Databases / user data
+airos.db
+*.db
+*.sqlite
+*.sqlite3
+data/uploads/
+**/data/users_db.json
+**/uploads/
+
+# Local smoke/test artifacts
+test_gemini.py
+
+# Editor
+.idea/
+.vscode/

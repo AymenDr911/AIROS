@@ -1,1 +1,37 @@
+# ──────────────────────────────────────────────
+# AIROS V2 — .gitignore
+# Secure by default: keep personal data OUT of version control.
+# ──────────────────────────────────────────────
+
+# Streamlit secrets (API keys — NEVER commit)
 .streamlit/secrets.toml
+.env
+*.env
+
+# Personal / user-generated data (never push to a repo)
+data/users_db.json
+data/uploads/
+data/*.json
+app/generated/
+airos.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+venv_corrupted/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local test artifacts
+data/tracker_smoketest.json
+data/tracker_resp_smoketest.json

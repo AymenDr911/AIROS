@@ -20,6 +20,10 @@ def find_company_by_name(name: str) -> Optional[Dict[str, Any]]:
             return company
     return None
 
+def get_company(company_id: str) -> Optional[Dict[str, Any]]:
+    """Return a single company by ID."""
+    return _get_companies().get(company_id)
+
 def find_or_create_company(
     name: str,
     industry: str = "",

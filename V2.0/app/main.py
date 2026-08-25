@@ -72,6 +72,9 @@ if jobs:
     main_pages.append(
         st.Page("pages/4_Job_Application.py", title="Job Application", icon="📋")
     )
+    main_pages.append(
+        st.Page("pages/5_Job_Tracking.py", title="Job Tracking", icon="📡")
+    )
 
 pages = {"Main": main_pages}
 pg = st.navigation(pages)

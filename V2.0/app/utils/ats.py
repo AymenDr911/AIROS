@@ -21,9 +21,8 @@ import streamlit as st
 # ==============================================================================
 MODEL_FALLBACK_CHAIN = [
     "gemini-3.7-flash",      # Latest Flash (Aug 2026)
-    "gemini-3.6-flash",
+    "gemini-3.6-flash",      # Recommended by Google (replaces 2.5)
     "gemini-3.5-flash",
-    "gemini-2.5-flash",      # Still reliable fallback
 ]
 
 def _call_gemini(prompt: str, json_mode: bool = False, max_retries: int = 2) -> Optional[str]:
@@ -199,7 +198,7 @@ def build_candidate_json(profile: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "location": personal.get("location") or personal.get("country") or "",
         "nationality": personal.get("nationality") or personal.get("citizenship") or "",
         "industry_hints": _extract_industry_hints(profile),
-        "all_tokens": _build_all_tokens(technical, methodologies, tools, languages, certifications, profile),
+        "all_tokens": sorted(_build_all_tokens(technical, methodologies, tools, languages, certifications, profile)),
     }
 def _extract_industry_hints(profile: Dict[str, Any]) -> List[str]:
     hints: Set[str] = set()

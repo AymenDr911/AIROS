@@ -77,6 +77,7 @@ def save_job(
         "ats_components": analysis_result.get("sub_scores", {}),
         "gap_analysis": analysis_result.get("gaps", []),       # Missing / weak requirements
         "strengths": analysis_result.get("hits", []),          # Strong matches (top-level)
+        "evidence": analysis_result.get("evidence", []),       # Evidence matrix with star ratings
         "recommendation": analysis_result.get("decision", "N/A"),
 
         # Relationships

@@ -10,6 +10,7 @@ import streamlit as st
 
 from services.session_manager import initialize_session, logout, require_auth
 from components.footer import render_footer
+from utils.tracker import application_summary
 
 # ──────────────────────────────────────────────
 # Page Config
@@ -241,17 +242,21 @@ st.markdown("---")
 # ──────────────────────────────────────────────
 st.subheader("Applications")
 
-a1, a2, a3, a4 = st.columns(4)
-with a1:
-    st.metric("Applied", 0)
-with a2:
-    st.metric("Pending", 0)
-with a3:
-    st.metric("Interview", 0)
-with a4:
-    st.metric("Rejected", 0)
+summary = application_summary()
 
-st.caption("Application Tracker will populate these numbers automatically.")
+a1, a2, a3, a4, a5 = st.columns(5)
+with a1:
+    st.metric("Applied", summary["applied"])
+with a2:
+    st.metric("Pending", summary["pending"])
+with a3:
+    st.metric("Interview", summary["interview"])
+with a4:
+    st.metric("Offers", summary["offers"])
+with a5:
+    st.metric("Rejected", summary["rejected"])
+
+st.caption(f"{summary['total']} application(s) tracked — view detail in **Job Tracking** (sidebar).")
 st.markdown("---")
 
 # ──────────────────────────────────────────────
