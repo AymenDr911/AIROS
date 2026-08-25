@@ -1,6 +1,0 @@
-streamlit
-python-docx
-pypdf
-google-genai
-tenacity
-toml
