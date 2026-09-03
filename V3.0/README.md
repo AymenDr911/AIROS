@@ -7,7 +7,7 @@ V2.0 remains frozen and is not modified by V3 development (rollback baseline).
 ## Architecture
 
 - app            — UX/UI layer (pending DEC-010 decision)
-- services       — application services (planned)
+- services       — application services (Slice 5: FastAPI backend API, DEC-011)
 - domain         — domain/models (planned)
 - database       — persistence layer (planned: Supabase PostgreSQL, DEC-009)
 - storage        — document storage (pending DEC-012)
@@ -118,4 +118,29 @@ cd scripts && python3 -m http.server 8000   # serve auth0_dev_login.html (tester
 # open http://localhost:8000/auth0_dev_login.html -> pick mode -> login/signup
 python3 scripts/verify_auth0.py --token <ID_TOKEN>
 ```
+
+## Slice 5 — FastAPI backend foundation (DEC-011) — DONE & VERIFIED
+
+`services/api/` is the V3 resource server: it verifies the Auth0 ID token
+(RS256 via the tenant JWKS; issuer/audience/expiry checked; RS256-only per
+DEC-014) and serves data scoped by the caller's OWN token — the API holds no
+service_role key, so per-account RLS (DEC-013) remains the isolation boundary.
+
+- `GET /api/health` — liveness + config surfacing (no auth)
+- `GET /api/me` — verified claims + the caller's own `accounts` row via
+  PostgREST (401 without/with a bad token; 502 mapped from upstream errors)
+- CORS: `http://localhost:3000` by default (`AIROS_CORS_ORIGINS`)
+- Dev run: `python3 -m uvicorn services.api.main:app --port 8001`
+  (reads the same `.env` as the verification scripts; `API_HOST`/`API_PORT`)
+- Dependencies (`requirements.txt`): fastapi, uvicorn, pyjwt[crypto], httpx
+
+```bash
+python3 -m pytest -q        # 77 tests incl. 24 offline API tests (forged RSA
+                            # tokens: expired/wrong-aud/wrong-iss/HS256/bad-sig)
+curl http://localhost:8001/api/health
+```
+
+The Next.js dashboard shows the live wiring probe ("backend /api/health"
+badge); the backend URL is overridable with `NEXT_PUBLIC_API_URL`.
+
 

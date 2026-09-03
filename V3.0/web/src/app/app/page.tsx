@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { Auth0Client } from "@auth0/auth0-spa-js";
 import {
   auth0,
+  checkBackend,
   getSession,
   login,
   logout,
@@ -63,6 +64,7 @@ export default function AppPage() {
   const [errMsg, setErrMsg] = useState("");
   const [claims, setClaims] = useState<Record<string, unknown> | null>(null);
   const [status, setStatus] = useState<SyncStatus | null>(null);
+  const [apiStatus, setApiStatus] = useState<SyncStatus | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<DataBundle | null>(null);
 
@@ -92,6 +94,8 @@ export default function AppPage() {
           if (cancelled) return;
           setStatus({ text: "sync failed: " + (e as Error).message, ok: false });
         }
+        // Slice 5 (DEC-011): backend resource-server wiring probe.
+        setApiStatus(await checkBackend());
         // Slice 4b: one cached round of RLS-scoped reads for all module panes.
         try {
           const bundle = await loadDashboard(c);
@@ -180,6 +184,11 @@ export default function AppPage() {
         >
           {status == null ? "syncing..." : status.text}
         </pre>
+        {apiStatus != null && (
+          <p className="mt-2 mb-0 text-xs">
+            <span className={apiStatus.ok ? "badge-ok" : "badge-warn"}>{apiStatus.text}</span>
+          </p>
+        )}
       </div>
 
       <div className="flex gap-2 mt-5 flex-wrap">

@@ -23,3 +23,9 @@ export function redirectUri(): string {
   if (typeof window !== "undefined") return window.location.origin + "/app";
   return "http://localhost:3000/app";
 }
+
+/** Backend resource server (Slice 5, DEC-011). Overridable via
+ * NEXT_PUBLIC_API_URL; dev default is the FastAPI dev port. */
+export function apiUrl(): string {
+  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8001";
+}

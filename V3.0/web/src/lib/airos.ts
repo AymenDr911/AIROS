@@ -2,7 +2,7 @@
 /* AIROS V3 - auth + theme + locale (Slice 4a port of app/js/app.js).
    Same Auth0 SPA flow (PKCE), same sync_my_account() call, same storage keys. */
 import { createAuth0Client, type Auth0Client } from "@auth0/auth0-spa-js";
-import { AIROS, redirectUri } from "./config";
+import { AIROS, apiUrl, redirectUri } from "./config";
 
 let client: Auth0Client | null = null;
 
@@ -70,6 +70,24 @@ export function providerLabel(sub: string | null | undefined): string {
   if (sub.indexOf("google-oauth2") === 0) return "Google";
   if (sub.indexOf("auth0|") === 0) return "email + password";
   return "Auth0";
+}
+
+/** GET {api}/api/health (no auth) - backend wiring probe (Slice 5, DEC-011).
+    Never throws; callers get a displayable result either way. */
+export async function checkBackend(): Promise<{ ok: boolean; text: string }> {
+  try {
+    const resp = await fetch(apiUrl() + "/api/health");
+    if (!resp.ok) {
+      return { ok: false, text: "backend /api/health -> HTTP " + resp.status };
+    }
+    const body = (await resp.json()) as { status?: string; config?: string };
+    return {
+      ok: body.status === "ok",
+      text: "backend /api/health -> " + (body.status ?? "?") + " (config " + (body.config ?? "?") + ")",
+    };
+  } catch (e) {
+    return { ok: false, text: "backend unreachable: " + (e as Error).message };
+  }
 }
 
 /* ---- Locked storage: never throws; falls back to memory (CHG-011 parity). ---- */
