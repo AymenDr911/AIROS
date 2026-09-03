@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AIROS V3 - Sign in</title>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+  <header class="site">
+    <div class="brand"><span class="dot"></span>AIROS <span class="muted">V3</span></div>
+    <nav class="site">
+      <button id="theme" class="btn secondary" type="button">Theme</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Welcome to AIROS V3</h1>
+      <p>Your career companion. Sign in with Auth0 to sync your account and enter the app.</p>
+      <div class="step">
+        <span>1. Sign in</span>
+        <span>2. Verify your email (optional, recommended)</span>
+        <span>3. Build your profile</span>
+      </div>
+      <button id="login" class="btn primary" type="button">Continue with Auth0</button>
+      <button id="signup" class="btn secondary" type="button">Create an account</button>
+      <div class="lang">
+        <button type="button" class="btn secondary" data-locale="en">EN</button>
+        <button type="button" class="btn secondary" data-locale="fr">FR</button>
+      </div>
+      <p class="muted">Language affects the Auth0 login prompts (ui_locales(.</p>
+      <p class="muted">Already signed in? <a href="app.html">Open the app</a></p>
+      <p id="err" class="errline hidden" role="alert"></p>
+    </section>
+  </main>
+
+  <footer class="site">AIROS V3 - interim app shell. Auth0 + Supabase (Slice 3). No Apple sign-in (DEC-015).</footer>
+
+  <script src="js/config.js"></script>
+  <script type="module" src="js/app.js"></script>
+  <script type="module">
+    function showErr(m) {
+      const e = document.getElementById('err');
+      if (e) { e.textContent = m; e.classList.remove('hidden'); } else { try { alert(m); } catch (x) { /* noop */ } }
+    }
+    /* If app.js failed to load/evaluate (window.__airosWired unset(, wire a
+       fallback so every button RESPONDS: it shows the error instead of dying silently. */
+    if (!window.__airosWired) {
+
+      function on(id, fn) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', function (ev) {
+          try { fn(ev); } catch (e) { showErr((e && e.message) || 'Unexpected error'); }
+        });
+      }
+      const dead = function () { showErr('App shell failed to load. Please hard-reload (Cmd+Shift+R( or reopen the page. If it persists, tell the developer (CHG-011(.'); };
+      on('login', dead);
+      on('signup', dead);
+      on('theme', dead);
+      if (document.querySelectorAll) document.querySelectorAll('[data-locale]').forEach(function (b) { b.addEventListener('click', dead); });
+    }
+    window.addEventListener('unhandledrejection', function (ev) {
+      showErr('Error: ' + ((ev.reason && ev.reason.message) || ev.reason || 'unknown'));
+    });
+    window.addEventListener('error', function (ev) {
+      showErr('Script error: ' + (ev.message || 'unknown'));
+    });
+  </script>
+</body>
+</html>

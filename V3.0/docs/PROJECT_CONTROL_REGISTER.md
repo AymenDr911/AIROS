@@ -1,0 +1,106 @@
+# AIROS V3 — Project Control Register
+
+Single lightweight project-control register. Owned by the solo developer.
+Convention: **no major architectural, security, data-model or scope change is implemented without recording the decision/change first.**
+
+Status legend: `OPEN` · `IN PROGRESS` · `DONE` · `DEFERRED` · `REJECTED`
+
+---
+
+## 1. Risks
+
+| ID  | Risk | Impact | Response |
+|-----|------|--------|----------|
+| R01 | V2 data loss during migration | High | Snapshot + staging + reconciliation report; integrity asserts (counts, relationships, lifecycle validity) |
+| R02 | Authentication weakness | High | Rebuild auth (hashed pw, real email verification, secure sessions); never migrate plaintext passwords; security tests |
+| R03 | GDPR / data exposure | High | Privacy & Security baseline **before migration**; data register; per-account data-layer isolation; retention/export/erasure |
+| R04 | Database / storage exceeds free-tier limits | High | Storage budget + monitoring; Supabase Postgres free tier (500MB DB / 1GB storage) capped via metrics (§9); selective doc retention |
+| R05 | AI provider failure or poor routing | Med/High | Provider abstraction + deterministic fallback (no silent provider swap); OmniRoute stays optional until validated |
+| R06 | ATS reliability uncalibrated | Medium | External-ATS benchmark suite; component-level scores; tracked scoring changes |
+| R07 | Insufficient automated tests | High | Unit/integration/migration test suites before cutover; migration dry-run vs. real snapshot |
+| R08 | V2 private data remains in Git | High | Remove real user files from VCS (done in d415064); enforce `.gitignore`; store docs outside source control |
+
+> Audit-supported: V2 weaknesses (JSON persistence, fake auth, AI coupling, committed private data, weak tests) map directly to R01–R08.
+
+---
+
+## 2. Issues
+
+_Recorded actual problems requiring resolution._
+
+| ID | Description | Impact | Action | Status |
+|----|-------------|--------|--------|--------|
+| ISS-001 | V2 `users_db.json` stores passwords in **plaintext** (real user `"Azerty123@"`). | Critical (R02/R03) | Never migrate passwords; auth delegated to a managed IdP (Auth0) — no self-hosted password store; force re-auth/verification at V3 onboarding | OPEN |
+| ISS-002 | Seeded test/demo account `test@airos.demo` (ACTIVE, `verification_token "AIROS-TEST"`) present in V2 data. | High (R08, prod hygiene) | Discard demo/test data in migration; no zero-day test-account seeding in production | OPEN |
+| ISS-003 | No real user-level authorization in V2; data keyed to session user w/ `CAND-UNKNOWN` fallback. | High (R03) | Enforce per-account scoping at the data layer (DB queries + document ownership) | OPEN |
+| ISS-004 | V2 reading Gemini key via `st.secrets` deep inside utils (Streamlit coupling). | Med (R05) | Centralize config/secret provider behind AI Gateway; engines never reach secrets | OPEN |
+| ISS-006 | V2 stores original CV content as `base64` inline in `users_db.json` (`profile.original_cv_files[].content_base64`). | High (R03/R08) | CV/document content must move to a protected document store, **never** persisted inline in a DB record; leave them out of source control; apply per-owner document access | OPEN |
+---
+
+## 3. Decisions
+
+_Record architectural/product decisions that affect future work._
+
+| ID | Decision | Reason | Status |
+|----|----------|--------|--------|
+| DEC-001 | ~~V3 uses SQLite + SQLModel~~ | Superseded by DEC-009 (PostgreSQL/Supabase) | **SUPERSEDED** |
+| DEC-002 | ~~V3 keeps Streamlit UI~~ | Superseded by the UI framework analysis (Option 2, `docs/UI_FRAMEWORK_ANALYSIS.md`): Streamlit **retired from V3 product UI** — auth-fit, rerun model, public-only free hosting; may serve internal data tools only, if ever needed | **RESOLVED 2 Sep 2026** (Next.js + Tailwind adopted, CHG-011) |
+| DEC-003 | Auth = **Auth0** (external IdP) — not built from scratch; Google/Apple social login natively supported on free tier | Removes riskiest build area (R02); ISS-001 solved (no self-hosted passwords); €0 | **DONE — LIVE VERIFIED (Slice 3, EU tenant)** |
+| DEC-004 | No password migration from V2; users authenticate fresh in V3 | GDPR + R02 | OPEN |
+| DEC-005 | AI provider abstraction + deterministic fallback; OmniRoute **not** a critical dependency | R05; charter "AI not critical dependency" | OPEN |
+| DEC-006 | Deterministic ATS engine, component scores, calibrated against an internal external-ATS benchmark; scores are derived-not-source | R06 | OPEN |
+| DEC-007 | Migration follows **Preserve→Transform→Recalculate→Discard**; demo/test data + session state discarded | Migration spec §2 | OPEN |
+| DEC-008 | Rollback baseline = frozen `V2.0` branch/tag; no reverse-transform | Spec §7; charter criterion 6 | OPEN |
+| DEC-009 | V3 persistence = **PostgreSQL on Supabase** (free tier; EU region at project creation) | **Adopted, Option 3**; real DB source-of-truth; R04 capacity | **OPEN (Adopted)** |
+| DEC-010 | V3 UI = **Tailwind CSS + Next.js** (static-first on Vercel; FastAPI behind per DEC-011) | Option 2 deep analysis concluded (`docs/UI_FRAMEWORK_ANALYSIS.md`); user selected Next.js over the Vite-SPA recommendation | **ADOPTED 2 Sep 2026** (CHG-011) |
+| DEC-011 | Python application services + business engines served behind a backend API (FastAPI) consumed by the frontend | Preserves V2 Python engines; clean separation | OPEN (implied by DEC-009/010 split) |
+| DEC-012 | Document/file storage behind a swappable interface (Supabase Storage vs AWS S3) | Deferred pending **deep analysis** (Option 4); docs stay out of Git | **DEFERRED (under analysis)** |
+| DEC-013 | V3 data model + isolation: normalized PostgreSQL tables with **JSONB for flexible payloads** (profile/application/lifecycle history); **per-account RLS** resolving the caller identity from the Auth0 JWT `sub` claim (`accounts.auth0_sub` + security-definer `current_account_id()`); document **content** is never stored in the DB — only metadata stubs (ISS-006) referencing the future protected store (DEC-012) | DEC-009, ISS-003, ISS-006; keeps flexible V2 shapes while enforcing GDPR per-account isolation at the data layer | **DONE — LIVE VERIFIED (Slice 2/3, incl. end-to-end RLS)** |
+| DEC-014 | Auth0 ↔ Supabase identity integration = native **Third-party Auth** integration: an Auth0 **ID token** (RS256 only; HS256/PS256 unsupported by Supabase) carrying a custom `role='authenticated'` claim (set via an Auth0 **Login/Post-Login Action**) is presented to Supabase PostgREST, which verifies it and exposes its claims via `auth.jwt()`. Account provisioning = **SECURITY DEFINER `sync_my_account()`** RPC that reads `sub`/`email` **only from the verified JWT** (never client-supplied) and upserts the caller's own `accounts` row | DEC-003 + DEC-013: keeps Auth0 as IdP and per-account RLS at the data layer with **no custom token-exchange layer**; €0 (Auth0 free tier: 25k MAU, social+passwordless) | **DONE — LIVE VERIFIED (Slice 3)** |
+| DEC-015 | Social sign-in = **Google only**; **Sign in with Apple / iCloud REJECTED** (requires a paid Apple Developer Program ~$99/yr) | Free-Plan cost constraint + explicit user decision 31 Aug 2026 ("remove apple suggestion") | **REJECTED — out of scope (V3)** |
+
+---
+
+## 4. Changes
+
+| ID | Change | Reason | Impact | Status |
+|----|--------|--------|--------|--------|
+| CHG-001 | Migration order gated: **Security/GDPR baseline before production-data migration** | Security & GDPR baseline §1 | Moves auth/DB/privacy before migration pipeline | OPEN |
+| CHG-002 | Discard V2 plaintext passwords & demo/test account at migration (vs. naive full port) | ISS-001, ISS-002 | Users authenticate fresh in V3; no hash migration | OPEN |
+| CHG-003 | **Stack adoption:** **Auth0 (auth)** + **Supabase PostgreSQL (DB)** confirmed; SQLite/Streamlit superseded; UI framework (Tailwind) and document-storage remain **open for deep analysis** | Project register feedback; GDPR residency + €0 + reliability | Presentation-layer decision still pending; Python engines moved behind an API layer | OPEN |
+| CHG-004 | **Adopt Test & Migration Validation Plan** (`docs/TEST_AND_MIGRATION_VALIDATION.md`) as the governing quality gate: defines unit/integration/migration/security-GDPR/UAT levels, 8 migration test cases, ATS benchmark, and Go/No-Go criteria mapped to Charter §5 | Quality-baseline feedback; gives testable Definition of Done for R01/R05/R06/R07 and Go/No-Go | Test & migration test suites are built *with* the foundation slice; ATS benchmark treated as internal calibration only | OPEN |
+| CHG-005 | **Go/No-Go gate enforced before production migration** — migration approved only when tests (per §4 of Test plan) + security/GDPR checks + storage limits + verified rollback all pass | Test plan §5; Security baseline §1 | Freezes the moment production data is admitted; register items must be DONE first | OPEN |
+| CHG-006 | **Harden auth-function ACLs (`database/migrations/0004_auth_acl_hardening.sql`)** — live discovery after applying 0003: Supabase default privileges directly grant `EXECUTE` on new `public` functions to `anon`/`service_role`, so `REVOKE FROM PUBLIC` alone left `sync_my_account()` anon-executable. 0004 explicitly revokes `anon`/`service_role` on `sync_my_account()` + `current_account_id()` (granting only `authenticated`) and fixes the default privileges for future functions | DEC-014 "callable only by authenticated"; found by the Slice-3 anonymous RPC probe (400 P0001 = function ran as anon) | **DONE — LIVE VERIFIED** (applied via SQL Editor; probe flipped 400→**401** anon denial; `verify_supabase.py` → VERIFY OK exit 0) |
+| CHG-007 | **Prevent password reuse on reset/signup** — enable **Password history** on the Auth0 `Username-Password-Authentication` connection (Authentication → Database → Settings → Password Policy; e.g. remember last 5) + set strength policy *Good* + enable the password dictionary | Found in real-user UAT, 31 Aug 2026: a password reset **accepted the user's previous password** by default (no reuse protection), so the "reset" changed nothing (R02) | One Auth0 dashboard step; blocks reusing old password on reset/signup | **OPEN** (one dashboard step to apply) |
+| CHG-008 | **Register the interim app-shell callback URLs** in Auth0 (Applications - Setting -> Allowed Callback URLs + Allowed Logout URLs = `http://localhost:8000/app/app.html`; keep the tester's callback too) | Needed by the new `app/` shell (Slice 3.5) so the browser can return after login/signout; EUR 0 | One Auth0 dashboard step to complete the app-shell UAT | **DONE — LIVE VERIFIED** (2 Sep 2026: `/authorize` probe → HTTP 302 hosted login; callback-mismatch 403 gone; user confirmed core login OK) |
+| CHG-009 | **Tier A - brand the Auth0 Universal Login** — no-code theme editor (Branding → UL → Customization Options( + Custom Text overrides (Advanced Options → Custom Text( + app-side EN/FR locale toggle (`ui_locales`( | User request "start the UI work" → Tier A = brand the hosted login; per Auth0 docs: no Custom Domain needed for the no-code editor (Page Templates/ACUL need one — deferred(; EUR 0 | Docs `docs/AUTH0_BRANDING.md` + preview `scripts/brand_preview.html`; app `config.locale` / `setLocale` / `ui_locales` | **OPEN** (dashboard steps to apply; UAT pending( |
+| CHG-010 | **Make the app-shell buttons resilient + error-visible** — (1( lazy-load the Auth0 SDK at click-time (`await import(CDN)` inside `auth0()`( instead of a top-level static import button (all-or-nothing module eval:any CDN stall/block in a browser → `window.AIROS` never defined → every button dead(; (2( wire the previously-unwired **Theme** button; (3( add visible `#err` line + `unhandledrejection`/`error` window catchers + click guards; (4( add runtime probe `scripts/selfcheck.html`+`.js` | Found in real-user UAT, 1 Sep 2026: **"no button works, even Continue with Auth0"** on the app landing; root cause: static CDN import failed to evaluate → silent dead buttons (plus Theme never wired( | Now: buttons always respond; CDN failure at click → clear red message; harness proves wiring | **DONE — VERIFIED** (headless-Chrome: 6/6 PASS; real index renders with no surfaced error; `node --check` 0/0; CDN `HTTP 200`; `pytest: 53 passed`( |
+| CHG-011 | **Adopt Next.js + Tailwind as the V3 product UI** — the analysis recommended a Vite+React SPA; the user selected **Next.js** (DEC-010 sub-choice). Streamlit retired (DEC-002). Interim vanilla shell remains until Slice 4a reaches login parity | Option 2 analysis concluded (`docs/UI_FRAMEWORK_ANALYSIS.md`); user decision 2 Sep 2026 | Slice 4a (Next.js scaffold + Auth0 login parity) → Slice 4b (welcome/dashboard parity: theme, EN/FR, placeholder modules); hosting: Vercel Hobby (Next.js) + Render free (FastAPI) + Supabase EU + Auth0 unchanged; a future production URL ⇒ one CHG for Auth0 callbacks + CORS | **IN PROGRESS** (Slice 4a implemented 2 Sep 2026: `web/` scaffold, build green, routes live; browser UAT after CHG-012) |
+| CHG-012 | **Register the Next.js shell callback/logout URLs** in Auth0 — add `http://localhost:3000/app` to Allowed Callback URLs + Allowed Logout URLs (keep the :8000 interim-shell URLs; both UIs share the same verified Auth0 application while Slice 4 UAT runs) | Slice 4a serves the product UI on :3000; the verified Auth0 SPA flow (same tenant/client ID) needs the new redirect target registered; EUR 0 | One Auth0 dashboard step (same as CHG-008), then browser UAT of the Next.js login with the AUTH_TEST_GUIDE checklist | **OPEN** (awaiting user dashboard step; scaffold build + routes verified 2 Sep 2026) |
+
+---
+
+## 5. Standing analysis pending (gates DEC-010 / DEC-012)
+
+| Topic | To analyze before committing | Feeding decision |
+|-------|------------------------------|------------------|
+| **UI framework (Option 2)** Tailwind vs Streamlit | **DECIDED 2 Sep 2026 — Next.js + Tailwind adopted** (user choice over the Vite recommendation); Streamlit retired. Recorded as CHG-011; DEC-002 RESOLVED, DEC-010 ADOPTED. Analysis: `docs/UI_FRAMEWORK_ANALYSIS.md`. Slice 4a **implemented 2 Sep 2026** (`web/`); login-parity UAT pending CHG-012 | DEC-002 / DEC-010 |
+| **Document storage (Option 4)** Cloudinary vs S3 vs Supabase Storage | Robustness for API-generated documents (CV/cover/PDF) vs image-optimization focus; EU residency; free-tier quotas (S3 5GB/12mo, Supabase 1GB); swappable-interface fit with GDPR retention | DEC-012 |
+| **Auth0 UL Page Templates / ACUL** | Both require a **Custom Domain** (ACUL additionally a CDN+SRI build pipeline( - not Free-Plan compatible until a domain/hosting topic is decided | Tier A uses the no-code editor only (this slice( | **DEFERRED** |
+
+> Register rule holds: once analysis concludes, the resulting choice is recorded as a DEC/CHG in this register **before** any implementation.
+
+---
+
+## 6. Delivered work (milestone log)
+
+| Slice | Status | Evidence |
+|-------|--------|----------|
+| Slice 0 — Project register + Test/Migration Validation Plan committed | **DONE** | `docs/PROJECT_CONTROL_REGISTER.md`, `docs/TEST_AND_MIGRATION_VALIDATION.md` |
+| Slice 1 — Migration-proof foundation: extract → transform → reconcile, safety rules (discard demo + plaintext password + inline base64 CV), 8 migration test cases + real-snapshot smoke | **DONE** | `migration/{snapshot,transform,reconcile,runner}.py`, `tests/test_migration.py`, `tests/v2_fixtures.py` — `pytest: 14 passed`; real-snapshot dry-run reconciles (`2→1` users, `4→4` apps, no leakage) |
+| Slice 2 — V3 Postgres schema + per-account RLS (Supabase) | **DONE - LIVE** | Schema + RLS applied to Supabase project `hpjeafsticujbswgfqjs` (EU region, free plan). Live-verified: 4 tables present; anonymous SELECT=empty, INSERT blocked (`42501 RLS violation`), publishable key locked out of all user-data tables. Local: `pytest: 30 passed`; 27/27 invariant checks green |
+| Slice 3.5 - Interim app shell UI (`app/`) | **IMPLEMENTED - UAT PENDING** | Vanilla JS/CSS login + welcome shell (no framework lock, DEC-002/010 pending): `app/index.html` (landing), `app/app.html` (callback/authed view), `app/js/{config,app}.js`, `app/css/style.css`. Login via Auth0 (spa-js CDN), auto `sync_my_account()` with ID token as bearer (same as verify_auth0.py), welcome card (email_verified badge, provider, live sync status, placeholder modules CV/Applications/Documents/ATS), light/dark theme, sign-out. Validated: `node --input-type=module --check` exit 0; all app files ASCII-clean (repair pass); serve test HTTP  ������200 on index/app/js/css/config; `pytest: 53 passed` (no regression). UAT 2 Sep 2026: CHG-008 applied + verified live (`/authorize` 302); user confirmed core login OK. Remaining: AUTH_TEST_GUIDE checklist + CHG-007 password-history step. Note: forgot-password is **by design for email+password accounts only** — social/Google accounts have no Auth0 password (user expectation clarified 2 Sep). |
+| Slice 3.6 - Tier A: Auth0 Universal Login branding (`docs/AUTH0_BRANDING.md`) | **IMPLEMENTED - UAT PENDING** | No-code UL theme (AIROS palette table( + Custom Text overrides (per prompt/screen/language( + app EN/FR toggle passing `ui_locales` (`config.locale` + `setLocale`( + preview mock `scripts/brand_preview.html`. Docs-sourced: editor at Branding -> UL -> Customization Options (Styles: Colors / Fonts / Borders / Widget / Page backgrounds(;text at -> Advanced Options -> Custom Text (. Page Templates (Liquid( + ACUL deferred (require **Custom Domain**; ACUL adds CDN+SRI(;. Validated: `node --input-type=module --check` exit 0; `pytest: 53 passed` (no Python touched(; serve 200 on preview/app pages. UAT: apply dashboard steps, then `AUTH_TEST_GUIDE.md` Test 7. |
+| Slice 4a - Next.js + Tailwind scaffold with Auth0 login parity (`web/`) | **IMPLEMENTED - UAT PENDING** | Next.js 15.5.25 + React 19 + Tailwind v4 + TypeScript strict in `web/` (interim `app/` shell untouched; CHG-011). Parity port of the vanilla shell: landing `/` (hero, Continue with Auth0, Create an account via `screen_hint=signup`, EN/FR → `ui_locales`, theme toggle, err line), authed `/app` (redirect-callback handling via `handleRedirectCallback`, welcome card: name/avatar, `email_verified` badge, provider label, **live `sync_my_account()` status line**, placeholder CV/Applications/Documents/ATS modules, sign-out via `logoutParams.returnTo`). Auth0 SPA flow = same verified PKCE chain (auth0-spa-js v2 as npm dependency, no CDN); config = same public values as `config.js`, overridable via `NEXT_PUBLIC_*` (`web/src/lib/config.ts`); palette/storage keys byte-compatible (`airos-theme`/`airos-locale`). Validated: `npm run build` green (TS strict + Tailwind compile), dev server HTTP 200 on `/` and `/app` with expected content, `pytest: 53 passed` (zero Python regression). Pending: **CHG-012** (`http://localhost:3000/app` callback/logout in Auth0) then browser UAT (same checklist as interim shell). |
+| Slice 4b - Dashboard modules on the new stack, read-only (`web/`) | **IMPLEMENTED - UAT PENDING** | `web/src/lib/data.ts`: typed PostgREST GET helpers using the Auth0 ID token as bearer = the verified per-account RLS path (DEC-013/014, same as `sync_my_account`/`verify_auth0.py`); one cached parallel read round per login (`accounts`, `profiles`, `applications` desc, `documents` desc-nullslast). `/app` reworked into a tabbed dashboard (Overview / Applications / Documents / ATS): compact identity header (avatar, `email_verified` badge, provider, live `sync_my_account()` line, sign-out), stat tiles (account RLS state, CV count, applications, documents), profile snapshot (career stage, strong-evidence flag, skill categories/languages/education/experience counts, V2 `source_key` provenance), live applications + documents tables (documents are metadata-only per ISS-006), ATS historical-score tiles with DEC-006 recalc note. Empty states point to the migration cutover and DEC-011 services slice; load errors show HTTP detail with 401-expired guidance. **Read-only by design: all writes belong to the backend services slice (DEC-011).** Validated: prod `next build` green (compile + TS strict + lint, 5/5 static pages; one `.next` cache collision with the Slice-4a dev server diagnosed and fixed), prod server HTTP 200 on `/` + `/app`, ASCII-clean, `pytest: 53 passed`, interim shell :8000 regression-checked 200/200. UAT: login at :3000, review the four tabs. |
+| Slice 3 — Auth0 identity integration | **DONE — LIVE VERIFIED** | **End-to-end proof on real project + real test user:** EU Auth0 tenant `dev-s6kc2wm7ppaoj8ni.eu.auth0.com` (RS256) + Login Action `role=authenticated` + Supabase Third-party Auth + `sync_my_account()` provisioned `accounts` row `auth0|6a950f03e0fcfc5b3d3f3197` via verified JWT; authenticated SELECT saw only own row; anon saw nothing → `verify_auth0.py` **VERIFY OK (exit 0)**. Local `pytest: 53 passed` (guards unit-tested); DB gates 0003/0004 closed (CHG-006). **Real-user UAT staged** (AUTH0_SETUP Step 9 checklist + `auth0_dev_login.html` flow tester: Login/Signup/Forgot; reset endpoint verified `HTTP 200`; Google ready to enable; Apple rejected DEC-015). **Kept for prod:** real email verification (dev account was `email_verified=false`). |

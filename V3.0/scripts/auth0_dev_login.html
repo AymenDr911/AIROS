@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AIROS V3 — Auth flow tester (dev)</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; margin: 2rem auto;
+           max-width: 720px; line-height: 1.5; }
+    input, button, select { font-size: 1rem; padding: .4rem .6rem; margin: .3rem 0;
+                    width: 100%; box-sizing: border-box; }
+    label { display: block; margin: .4rem 0; font-size: .95rem; }
+    fieldset { margin: .8rem 0; }
+    fieldset label { display: inline-block; margin-right: 1.2rem; }
+    button.secondary { background: #eee; border: 1px solid #bbb; }
+    pre { background:#f5f5f5; border:1px solid #ddd; padding: 1rem; overflow:auto;
+          white-space: pre-wrap; word-break: break-word; }
+    code { background:#f5f5f5; padding:.1rem .3rem; }
+    details { margin: .8rem 0; }
+    summary { cursor: pointer; font-weight: 600; }
+    .hint { color:#555; font-size:.9rem; }
+  </style>
+</head>
+<body>
+  <h1>AIROS V3 — Auth flow tester (local dev only)</h1>
+  <p class="hint">Exercises login, signup and forgot-password against the Auth0
+     tenant. Only <strong>Google</strong> is a social option, and it appears on the
+     Auth0 page only after the Google connection is enabled (see notes on the
+     dashboard setup below). The ID token printed here carries
+     <code>role='authenticated'</code> — never paste it into chats or commits.</p>
+
+  <fieldset>
+    <legend>Mode</legend>
+    <label><input type="radio" name="mode" value="login" checked/> Log in (existing account)</label>
+    <label><input type="radio" name="mode" value="signup"/> Sign up (create a new account)</label>
+  </fieldset>
+
+  <label>Auth0 Domain <input id="domain" value="dev-s6kc2wm7ppaoj8ni.eu.auth0.com"
+          title="Exactly this tenant domain: dev- + tenant id + .eu.auth0.com"/></label>
+  <label>Client ID <input id="client" value="mIqi9un7HPVTP8Ej5xlmXkkosUXYArDJ"/></label>
+  <label>Redirect URI (must equal the allowed callback URL)
+    <input id="redirect" value="http://localhost:8000/auth0_dev_login.html"/></label>
+
+  <button id="authbtn" disabled>Log in with Auth0</button>
+
+  <details>
+    <summary>Forgot password (test password reset)</summary>
+    <label>Email for reset <input id="reset_email" placeholder="you@example.com"/></label>
+    <button id="forgot" class="secondary" disabled>Send password-reset email</button>
+    <p class="hint">Uses Auth0's password-reset endpoint directly. It always
+      answers &ldquo;We've just sent you an email&hellip;&rdquo; (anti-abuse), so check
+      the inbox AND spam of the address you enter.</p>
+    <p class="hint">Known limit (UAT 31 Aug 2026): Auth0 lets you reuse your
+      previous password unless <strong>Password history</strong> is enabled on the
+      connection (Authentication &rarr; Database &rarr; Username-Password-Authentication
+      &rarr; Settings &rarr; Password Policy). See CHG-007.</p>
+  </details>
+
+  <pre id="out">loading auth0-spa-js from CDN...</pre>
+
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+    const out = $('out');
+
+    // Exact, working values for THIS AIROS dev tenant (Slice 3).
+    const DEFAULTS = {
+      domain: 'dev-s6kc2wm7ppaoj8ni.eu.auth0.com',   // NOTE the dev- prefix
+      clientId: 'mIqi9un7HPVTP8Ej5xlmXkkosUXYArDJ',
+      redirect: 'http://localhost:8000/auth0_dev_login.html',
+    };
+
+    const applyDefaults = () => {
+      $('domain').value = DEFAULTS.domain;
+      $('client').value = DEFAULTS.clientId;
+      $('redirect').value = DEFAULTS.redirect;
+    };
+    // Run now AND after load to beat browser autofill / stale restored values.
+    applyDefaults();
+    window.addEventListener('load', () => setTimeout(applyDefaults, 200));
+
+    const mode = () =>
+      (document.querySelector('input[name="mode"]:checked') || {}).value || 'login';
+
+    const updateCfg = () => {
+      const domain = $('domain').value.trim().toLowerCase();
+      const clientId = $('client').value.trim();
+      if (domain !== DEFAULTS.domain) {
+        out.textContent = 'ERROR: Auth0 Domain must be exactly "' + DEFAULTS.domain +
+          '" (include the dev- prefix). Found: "' + (domain || '(empty)') + '".';
+        return null;
+      }
+      if (clientId !== DEFAULTS.clientId) {
+        out.textContent = 'ERROR: Client ID must be exactly "' + DEFAULTS.clientId + '".';
+        return null;
+      }
+      return {
+        domain, clientId,
+        redirect_uri: $('redirect').value.trim() || DEFAULTS.redirect,
+        mode: mode(),
+      };
+    };
+
+    try {
+      const { createAuth0Client } =
+        await import('https://cdn.jsdelivr.net/npm/@auth0/auth0-spa-js@2/+esm');
+      out.textContent = 'ready — pick a mode (Log in / Sign up) and click the button.';
+      $('authbtn').disabled = false;
+      $('forgot').disabled = false;
+
+      document.querySelectorAll('input[name="mode"]').forEach((r) => {
+        r.addEventListener('change', () => {
+          $('authbtn').textContent = mode() === 'signup'
+            ? 'Sign up with Auth0'
+            : 'Log in with Auth0';
+        });
+      });
+
+      $('authbtn').onclick = async () => {
+        const cfg = updateCfg();
+        if (!cfg) return;
+        out.textContent = 'Contacting ' + cfg.domain + ' (' + cfg.mode + ') ...';
+        const client = await createAuth0Client({
+          domain: cfg.domain,
+          clientId: cfg.clientId,
+          authorizationParams: { redirect_uri: cfg.redirect_uri },
+        });
+        const q = new URLSearchParams(location.search);
+        if (q.has('code') && q.has('state')) {
+          await client.handleRedirectCallback();
+          history.replaceState(null, '', location.pathname);
+        }
+        if (await client.isAuthenticated()) {
+          const claims = await client.getIdTokenClaims();
+          out.textContent = claims.__raw;
+        } else if (cfg.mode === 'signup') {
+          await client.loginWithRedirect({
+            redirect_uri: cfg.redirect_uri,
+            authorizationParams: { screen_hint: 'signup' },
+          });
+        } else {
+          await client.loginWithRedirect({ redirect_uri: cfg.redirect_uri });
+        }
+      };
+
+      $('forgot').onclick = async () => {
+        const cfg = updateCfg();
+        if (!cfg) return;
+        const email = $('reset_email').value.trim();
+        if (!email) { out.textContent = 'Enter an email address first.'; return; }
+        out.textContent = 'Requesting a password-reset email for ' + email + ' ...';
+        try {
+          const resp = await fetch('https://' + cfg.domain + '/dbconnections/change_password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              client_id: cfg.clientId,
+              connection: 'Username-Password-Authentication',
+            }),
+          });
+          const text = await resp.text();
+          out.textContent = 'Password-reset endpoint -> HTTP ' + resp.status +
+            '\n' + (text || '(empty)') +
+            '\n\nCheck the inbox AND spam of: ' + email;
+        } catch (e) {
+          out.textContent = 'ERROR: ' + e.message;
+        }
+      };
+    } catch (e) {
+      out.textContent = 'ERROR loading auth0-spa-js: ' + e.message +
+        '\nYou need internet access to fetch the CDN library.';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+# AIROS V3 — Python backend test/dev dependencies.
+# The V3 UI + runtime stack (Auth0, Supabase) is added in later slices.
+pytest>=8.0

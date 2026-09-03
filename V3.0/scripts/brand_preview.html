@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>AIROS V3 - Branded login preview (mock(</title>
+  <style>
+    :root{--bg:#f6f7fb;--surface:#ffffff;--text:#1a2332;--muted:#5b6b7f;
+      --brand:#2564eb;--brand-dark:#1d4fc4;--border:#c7d2e0;--ok:#16a34a;}
+    *{box-sizing:border-box;}
+    body{font-family:-apple-system,system-ui,"Segoe UI",Roboto,sans-serif;
+          background:var(--bg);color:var(--text);margin:0;padding:0;
+          display:flex;flex-direction:column;min-height:100vh;line-height:1.55;}
+    header,footer{padding:1rem 1.5rem;background:var(--surface);
+          border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.6rem;}
+    footer{border-top:1px solid var(--border);border-bottom:0;color:var(--muted);
+          font-size:0.8rem;justify-content:center;}
+    .brand{font-weight:700;font-size:1.15rem;}
+    .dot{width:0.9rem;height:0.9rem;border-radius:50%;background:var(--brand);display:inline-block;}
+    main{flex:1;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+          padding:2rem;width:100%;max-width:400px;box-shadow:0 8px 24px rgba(16,26,44,.08);}
+    h1{font-size:1.35rem;margin:0 0 0.25rem;}
+    .sub{color:var(--muted);font-size:0.9rem;margin:0 0 1.25rem;}
+    label{display:block;font-size:0.85rem;margin:0.75rem 0 0.25rem;color:var(--text);}
+    input{width:100%;padding:0.6rem 0.75rem;border:1px solid var(--border);
+          border-radius:8px;font-size:0.95rem;background:#fff;color:var(--text);}
+    .btn{display:block;width:100%;padding:0.6rem;border-radius:8px;
+          border:1px solid transparent;font-size:0.95rem;font-weight:600;cursor:pointer;
+          text-align:center;text-decoration:none;margin-top:1rem;}
+    .primary{background:var(--brand);color:#fff;}
+    .primary:hover{background:var(--brand-dark);}
+    .divider{display:flex;align-items:center;gap:0.75rem;color:var(--muted);
+          font-size:0.8rem;margin:1.25rem 0;}
+    .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border);}
+    .google{background:#fff;border-color:var(--border);color:var(--text);}
+    .lang{display:flex;gap:0.5rem;justify-content:center;margin-bottom:1rem;}
+    .lang .btn{width:auto;margin:0;padding:0.3rem 1rem;font-size:0.85rem;
+          background:#fff;border-color:var(--border);color:var(--text);}
+    .banner{background:#fff8e6;border:1px solid #f5d48a;color:#8a5a00;
+          border-radius:8px;padding:0.6rem 0.9rem;font-size:0.8rem;margin-bottom:1.25rem;}
+    .note{color:var(--muted);font-size:0.78rem;margin-top:1rem;text-align:center;}
+  </style>
+</head>
+<body>
+  <header>
+    <span class="dot"></span><span class="brand">AIROS <span style="color:var(--muted);font-weight:600;">V3</span></span>
+  </header>
+  <main>
+    <div class="card">
+      <div class="banner">PREVIEW ONLY - mock of the branded Universal Login. The real page is hosted by Auth0 (dashboard: Branding -> Universal Login(.</div>
+      <div class="lang"><button class="btn" type="button">EN</button><button class="btn" type="button">FR</button></div>
+      <h1>Welcome to AIROS</h1>
+      <p class="sub">Log in to continue, or create an account.</p>
+      <label for="email">Email address</label>
+      <input id="email" type="email" placeholder="you@example.com" value="" readonly/>
+      <label for="pass">Password</label>
+      <input id="pass" type="password" placeholder="Your password" value="" readonly/>
+      <button class="btn primary" type="button" disabled>Continue</button>
+      <div class="divider">or</div>
+      <button class="btn google" type="button" disabled>Continue with Google</button>
+      <p class="note">No Apple sign-in (DEC-015(. All buttons on this preview are <strong>intentionally disabled</strong> (it is a static mock(. Test page: <code>auth0_dev_login.html</code>.</p>
+    </div>
+  </main>
+  <footer>AIROS V3 - Auth0 + Supabase (Slice 3(. Tier A brand preview.</footer>
+</body>
+</html>

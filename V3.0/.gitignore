@@ -1,0 +1,44 @@
+# ──────────────────────────────────────────────
+# AIROS V3 — .gitignore (Security & GDPR baseline §8)
+# Secure by default: no personal data, secrets or generated artifacts in VCS.
+# ──────────────────────────────────────────────
+
+# Secrets & config with credentials
+.streamlit/secrets.toml
+.env
+*.env
+credentials*.json
+
+# V2 source snapshot (contains real personal data - ISS-006) must NEVER be committed
+V2.0/data/users_db.json
+data/users_db.json
+data/uploads/
+
+# Generated / runtime artifacts & reports
+generated/
+.staging/
+migration/reports/
+*.report.json
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Python environments
+.venv/
+venv/
+venv_corrupted/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Cline project rules (local workspace preferences - never commit/shared)
+.clinerules/
