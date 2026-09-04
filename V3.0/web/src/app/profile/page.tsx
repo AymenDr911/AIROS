@@ -10,7 +10,16 @@
    Persistence goes through PUT /api/profile (exact migration transform). */
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AUTH_TIMEOUT_MS, auth0, getSession, login, withTimeout } from "@/lib/airos";
+import {
+  AUTH_PROBE_TIMEOUT_MS,
+  AUTH_TIMEOUT_MS,
+  auth0,
+  getSession,
+  hasPendingLogin,
+  login,
+  withTimeout,
+} from "@/lib/airos";
+import ConnectionProbe from "@/components/ConnectionProbe";
 import {
   CAREER_STAGES,
   EDUCATION_STATUSES,
@@ -37,15 +46,19 @@ export default function ProfilePage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [retryTick, setRetryTick] = useState(0);
+  const [authNote, setAuthNote] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+    const pendingLogin = hasPendingLogin();
     (async () => {
       try {
         const authed = await withTimeout(
           getSession(),
-          AUTH_TIMEOUT_MS,
-          "Auth0 is not responding. Check your connection, then retry."
+          pendingLogin ? AUTH_TIMEOUT_MS : AUTH_PROBE_TIMEOUT_MS,
+          pendingLogin
+            ? "Auth0 did not complete the login. Check your connection, then retry."
+            : "Could not reach Auth0 to check your session."
         );
         if (cancelled) return;
         if (!authed) {
@@ -59,7 +72,13 @@ export default function ProfilePage() {
         setPhase("wizard");
       } catch (e) {
         if (!cancelled) {
-          setErr((e as Error)?.message ?? "Unexpected error");
+          const msg = (e as Error)?.message ?? "Unexpected error";
+          if (!pendingLogin) {
+            setAuthNote(msg + " Showing the sign-in screen below.");
+            setPhase("signedout");
+            return;
+          }
+          setErr(msg);
           setPhase("error");
         }
       }
@@ -122,6 +141,9 @@ export default function ProfilePage() {
             Continue with Auth0
           </button>
         </div>
+        <div className="mt-6 max-w-md">
+          <ConnectionProbe />
+        </div>
       </div>
     );
   }
@@ -131,9 +153,15 @@ export default function ProfilePage() {
       <div className="card text-center py-10">
         <h1 className="text-3xl font-bold">You are signed out</h1>
         <p className="text-muted mt-3">Sign in with Auth0 to build your profile.</p>
+        {authNote != null && (
+          <p className="text-xs text-warn mt-2 mb-0">{authNote}</p>
+        )}
         <button type="button" onClick={() => login()} className="btn-primary mt-6">
           Continue with Auth0
         </button>
+        <div className="mt-6 max-w-md">
+          <ConnectionProbe />
+        </div>
       </div>
     );
   }

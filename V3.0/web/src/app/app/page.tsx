@@ -7,16 +7,19 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Auth0Client } from "@auth0/auth0-spa-js";
 import {
+  AUTH_PROBE_TIMEOUT_MS,
   AUTH_TIMEOUT_MS,
   auth0,
   checkBackend,
   getSession,
+  hasPendingLogin,
   login,
   logout,
   syncAccount,
   withTimeout,
   providerLabel,
 } from "@/lib/airos";
+import ConnectionProbe from "@/components/ConnectionProbe";
 import {
   fetchTable,
   type AccountRow,
@@ -71,15 +74,19 @@ export default function AppPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<DataBundle | null>(null);
   const [retryTick, setRetryTick] = useState(0);
+  const [authNote, setAuthNote] = useState("");
 
   useEffect(() => {
     let cancelled = false;
+    const pendingLogin = hasPendingLogin();
     (async () => {
       try {
         const authed = await withTimeout(
           getSession(),
-          AUTH_TIMEOUT_MS,
-          "Auth0 is not responding. Check your connection, then retry."
+          pendingLogin ? AUTH_TIMEOUT_MS : AUTH_PROBE_TIMEOUT_MS,
+          pendingLogin
+            ? "Auth0 did not complete the login. Check your connection, then retry."
+            : "Could not reach Auth0 to check your session."
         );
         if (cancelled) return;
         if (!authed) {
@@ -120,7 +127,15 @@ export default function AppPage() {
         }
       } catch (e) {
         if (cancelled) return;
-        setErrMsg((e as Error)?.message || "Unexpected error");
+        const msg = (e as Error)?.message || "Unexpected error";
+        if (!pendingLogin) {
+          // Auth0 unreachable but no login is in progress: never block the
+          // shell - show the sign-in screen with a note + connectivity probe.
+          setAuthNote(msg + " Showing the sign-in screen below.");
+          setPhase("signedout");
+          return;
+        }
+        setErrMsg(msg);
         setPhase("error");
       }
     })();
@@ -160,6 +175,9 @@ export default function AppPage() {
             Continue with Auth0
           </button>
         </div>
+        <div className="mt-6 max-w-md">
+          <ConnectionProbe />
+        </div>
       </div>
     );
   }
@@ -169,9 +187,15 @@ export default function AppPage() {
       <div className="card text-center py-10">
         <h1 className="text-3xl font-bold">You are signed out</h1>
         <p className="text-muted mt-3">Sign in with Auth0 to sync your account and enter AIROS.</p>
+        {authNote != null && (
+          <p className="text-xs text-warn mt-2 mb-0">{authNote}</p>
+        )}
         <button type="button" onClick={() => login()} className="btn-primary mt-6">
           Continue with Auth0
         </button>
+        <div className="mt-6 max-w-md">
+          <ConnectionProbe />
+        </div>
       </div>
     );
   }

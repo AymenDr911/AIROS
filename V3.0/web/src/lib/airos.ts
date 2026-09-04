@@ -55,6 +55,12 @@ export async function getSession(): Promise<boolean> {
 
 export const AUTH_TIMEOUT_MS = 12000;
 
+/** Shorter probe used when there is NO in-progress login (code/state) - i.e.
+    we are only "checking if you are signed in". If Auth0 is unreachable we
+    do NOT block the app: we fall back to the signed-out screen with a
+    reachability note and let the user attempt sign-in explicitly. */
+export const AUTH_PROBE_TIMEOUT_MS = 6000;
+
 export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(message)), ms);
@@ -69,6 +75,39 @@ export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Prom
       }
     );
   });
+}
+
+/** True when the URL carries the Auth0 callback params (a login is being
+    completed), which is the one case we must wait for Auth0. */
+export function hasPendingLogin(): boolean {
+  if (typeof window === "undefined") return false;
+  const q = new URLSearchParams(window.location.search);
+  return q.has("code") && q.has("state");
+}
+
+/** Precise reachability probe of the Auth0 discovery endpoint (abortable).
+    Lets the UI show exactly what failed instead of a blind error. */
+export async function checkAuth0(): Promise<{ ok: boolean; text: string }> {
+  const url = "https://" + AIROS.domain + "/.well-known/openid-configuration";
+  const started = performance.now();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const resp = await fetch(url, { signal: ctl.signal, mode: "cors" });
+    const ms = Math.round(performance.now() - started);
+    return {
+      ok: resp.ok,
+      text: resp.ok
+        ? "Auth0 reachable - HTTP " + resp.status + " in " + ms + " ms"
+        : "Auth0 returned HTTP " + resp.status,
+    };
+  } catch (e) {
+    const ms = Math.round(performance.now() - started);
+    const why = (e as Error).name === "AbortError" ? "timed out" : (e as Error).message;
+    return { ok: false, text: "Auth0 unreachable - " + why + " (" + ms + " ms). Check VPN/network." };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** POST {} to Supabase sync_my_account with the raw Auth0 ID token as bearer.
