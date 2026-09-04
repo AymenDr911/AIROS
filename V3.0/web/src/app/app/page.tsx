@@ -7,12 +7,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Auth0Client } from "@auth0/auth0-spa-js";
 import {
+  AUTH_TIMEOUT_MS,
   auth0,
   checkBackend,
   getSession,
   login,
   logout,
   syncAccount,
+  withTimeout,
   providerLabel,
 } from "@/lib/airos";
 import {
@@ -68,12 +70,17 @@ export default function AppPage() {
   const [apiStatus, setApiStatus] = useState<SyncStatus | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [data, setData] = useState<DataBundle | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const authed = await getSession();
+        const authed = await withTimeout(
+          getSession(),
+          AUTH_TIMEOUT_MS,
+          "Auth0 is not responding. Check your connection, then retry."
+        );
         if (cancelled) return;
         if (!authed) {
           setPhase("signedout");
@@ -120,16 +127,39 @@ export default function AppPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryTick]);
 
   if (phase === "loading") {
-    return <div className="card">Loading...</div>;
+    return (
+      <div className="card text-center py-6">
+        <p className="text-muted">Loading...</p>
+        <p className="text-xs text-muted mt-3 mb-0">
+          Stuck?{" "}
+          <button
+            type="button"
+            className="text-brand underline underline-offset-2 cursor-pointer"
+            onClick={() => window.location.reload()}
+          >
+            Reload the page
+          </button>
+        </p>
+      </div>
+    );
   }
 
   if (phase === "error") {
     return (
-      <div className="card">
-        <p className="text-danger">Error: {errMsg}</p>
+      <div className="card text-center py-10">
+        <h1 className="text-3xl font-bold">Could not start the app</h1>
+        <p className="text-muted mt-3">{errMsg}</p>
+        <div className="flex justify-center gap-3 mt-6 flex-wrap">
+          <button type="button" onClick={() => setRetryTick((t) => t + 1)} className="btn-primary">
+            Try again
+          </button>
+          <button type="button" onClick={() => login()} className="btn-secondary">
+            Continue with Auth0
+          </button>
+        </div>
       </div>
     );
   }

@@ -49,6 +49,28 @@ export async function getSession(): Promise<boolean> {
   return c.isAuthenticated();
 }
 
+/** Cap applied to auth bootstrap so the shell can NEVER sit on "Loading..."
+    forever (real-user report 3 Sep 2026: app stuck on Loading. when the Auth0
+    discovery call stalls - e.g. blocked/slow network). */
+
+export const AUTH_TIMEOUT_MS = 12000;
+
+export function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(message)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
 /** POST {} to Supabase sync_my_account with the raw Auth0 ID token as bearer.
    Exact parity with verify_auth0.py / app.js (DEC-014: no custom token exchange). */
 export async function syncAccount(c: Auth0Client): Promise<{ status: number; text: string }> {

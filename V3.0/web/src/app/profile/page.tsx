@@ -10,7 +10,7 @@
    Persistence goes through PUT /api/profile (exact migration transform). */
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { auth0, getSession, login } from "@/lib/airos";
+import { AUTH_TIMEOUT_MS, auth0, getSession, login, withTimeout } from "@/lib/airos";
 import {
   CAREER_STAGES,
   EDUCATION_STATUSES,
@@ -29,19 +29,24 @@ import {
 type Step = "choice" | "career_stage" | "identity" | "education" | "experience" | "skills" | "done";
 
 export default function ProfilePage() {
-  const [phase, setPhase] = useState<"loading" | "signedout" | "wizard">("loading");
+  const [phase, setPhase] = useState<"loading" | "signedout" | "wizard" | "error">("loading");
   const [token, setToken] = useState("");
   const [step, setStep] = useState<Step>("choice");
   const [draft, setDraft] = useState<ProfileDraft>(emptyDraft());
   const [rich, setRich] = useState<ExtractResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const authed = await getSession();
+        const authed = await withTimeout(
+          getSession(),
+          AUTH_TIMEOUT_MS,
+          "Auth0 is not responding. Check your connection, then retry."
+        );
         if (cancelled) return;
         if (!authed) {
           setPhase("signedout");
@@ -53,14 +58,16 @@ export default function ProfilePage() {
         setToken(claims?.__raw ?? "");
         setPhase("wizard");
       } catch (e) {
-        if (!cancelled) setErr((e as Error).message);
-        setPhase("signedout");
+        if (!cancelled) {
+          setErr((e as Error)?.message ?? "Unexpected error");
+          setPhase("error");
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [retryTick]);
 
   /* ---- Road B: V2 cv_choice.py extract + prefill (exact) ---- */
   async function runExtraction(files: FileList | null) {
@@ -84,7 +91,40 @@ export default function ProfilePage() {
     setStep("career_stage"); // V2: extraction -> career_stage step
   }
 
-  if (phase === "loading") return <div className="card">Loading...</div>;
+  if (phase === "loading") {
+    return (
+      <div className="card text-center py-6">
+        <p className="text-muted">Loading...</p>
+        <p className="text-xs text-muted mt-3 mb-0">
+          Stuck?{" "}
+          <button
+            type="button"
+            className="text-brand underline underline-offset-2 cursor-pointer"
+            onClick={() => window.location.reload()}
+          >
+            Reload the page
+          </button>
+        </p>
+      </div>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <div className="card text-center py-10">
+        <h1 className="text-3xl font-bold">Could not start the profile wizard</h1>
+        <p className="text-muted mt-3">{err}</p>
+        <div className="flex justify-center gap-3 mt-6 flex-wrap">
+          <button type="button" onClick={() => setRetryTick((t) => t + 1)} className="btn-primary">
+            Try again
+          </button>
+          <button type="button" onClick={() => login()} className="btn-secondary">
+            Continue with Auth0
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (phase === "signedout") {
     return (
