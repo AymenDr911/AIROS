@@ -1,18 +1,30 @@
 "use client";
 /* AIROS V3 - auth + theme + locale (Slice 4a port of app/js/app.js).
-   Same Auth0 SPA flow (PKCE), same sync_my_account() call, same storage keys. */
-import { createAuth0Client, type Auth0Client } from "@auth0/auth0-spa-js";
+   Same Auth0 SPA flow (PKCE), same sync_my_account() call, same storage keys.
+
+   ROOT-CASE FIX (3 Sep 2026, CHG-015): the Auth0 SDK's createAuth0Client()
+   (v2.24.1) ends with `await auth0.checkSession()` which fires a HIDDEN IFRAME
+   to the tenant's /authorize?prompt=none endpoint. On flaky/VPN/proxy networks
+   (or where third-party cookies are blocked) that iframe round-trip hangs, so the
+   app sits on "Loading..." even though Auth0's discovery endpoint is reachable
+   in ~300ms. We therefore construct the client SYNCHRONOUSLY with `new
+   Auth0Client(...)` — the constructor does NO network — and read auth state from
+   the cache. checkSession()'s silent refresh only runs later, on demand, when a
+   protected resource needs a fresh token (and is then wrapped in its own
+   timeout). cacheLocation:localStorage keeps the session across reloads. */
+import { Auth0Client } from "@auth0/auth0-spa-js";
 import { AIROS, apiUrl, redirectUri } from "./config";
 
 let client: Auth0Client | null = null;
 
-/** Single Auth0 SPA client, created lazily (parity: auth0() in app.js). */
-export async function auth0(): Promise<Auth0Client> {
+/** Single Auth0 SPA client, created lazily and SYNCHRONOUSLY (no checkSession). */
+export function auth0(): Auth0Client {
   if (client) return client;
-  client = await createAuth0Client({
+  client = new Auth0Client({
     domain: AIROS.domain,
     clientId: AIROS.clientId,
     authorizationParams: { redirect_uri: redirectUri() },
+    cacheLocation: "localstorage",
   });
   return client;
 }
