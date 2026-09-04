@@ -27,7 +27,7 @@ def test_auth_migration_present_and_ordered():
     assert "0004_auth_acl_hardening.sql" in names
     orders = [m.order for m in MIGRATIONS]
     assert orders == sorted(orders)
-    assert orders[-1] == 4  # ACL hardening applied after schema + RLS + auth
+    assert orders[-1] == 5  # profile-meta columns applied after schema+RLS+auth+ACL
 
 
 def test_auth_migration_is_wrapped_in_transaction():

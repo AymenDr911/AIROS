@@ -4,6 +4,7 @@
    applications, documents) fetched with the Auth0 ID token as bearer
    (DEC-014 pattern, same as sync_my_account / verify_auth0.py). */
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { Auth0Client } from "@auth0/auth0-spa-js";
 import {
   auth0,
@@ -277,6 +278,9 @@ function OverviewPane({ data }: { data: DataBundle | null }) {
             No profile row yet for your account. V2 career data appears here after the
             migration cutover (Slice 1 output is ready; cutover is a separate approved topic).
           </p>
+          <Link href="/profile" className="btn-primary mt-3 inline-block">
+            Create your profile
+          </Link>
         </div>
       )}
 

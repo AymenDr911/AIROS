@@ -164,6 +164,18 @@ def transform_users(snapshot, discard_test_user: bool = True) -> TransformResult
     return result
 
 
+# Identity keys carried into the V3 `identity` JSONB: the CV-extraction
+# schema keys (V2 AI mode) PLUS the manual-onboarding keys (V2 manual mode),
+# so BOTH V2 profile shapes survive the transform verbatim (Slice 6 parity).
+_IDENTITY_EXTRACT_KEYS = (
+    "full_name", "email", "phone", "location", "linkedin", "github", "portfolio", "summary",
+)
+_IDENTITY_MANUAL_KEYS = (
+    "first_name", "last_name", "country", "city", "nationality", "whatsapp",
+    "languages", "requires_visa_sponsorship", "visa_status", "has_driver_license",
+)
+
+
 def transform_profile(v2_profile: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize a V2 profile object into the V3 shape (no passwords, no inline CV)."""
     identity = v2_profile.get("personal_identity")
@@ -173,7 +185,7 @@ def transform_profile(v2_profile: Dict[str, Any]) -> Dict[str, Any]:
         "career_stage": v2_profile.get("career_stage", ""),
         "identity": {
             k: identity.get(k, "")
-            for k in ("full_name", "email", "phone", "location", "linkedin", "github", "portfolio", "summary")
+            for k in _IDENTITY_EXTRACT_KEYS + _IDENTITY_MANUAL_KEYS
         },
         "education": v2_profile.get("education", []) if isinstance(v2_profile.get("education"), list) else [],
         "experience": v2_profile.get("experience", []) if isinstance(v2_profile.get("experience"), list) else [],
@@ -186,6 +198,9 @@ def transform_profile(v2_profile: Dict[str, Any]) -> Dict[str, Any]:
         "original_cv_count": len(v2_profile.get("original_cv_files", []))
         if isinstance(v2_profile.get("original_cv_files"), list)
         else 0,
+        # V2 onboarding metadata preserved verbatim (Slice 6, CHG-014)
+        "profile_method": str(v2_profile.get("profile_method", "") or ""),
+        "onboarding_completed": bool(v2_profile.get("onboarding_completed", False)),
     }
 
 

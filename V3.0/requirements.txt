@@ -4,3 +4,7 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 pyjwt[crypto]>=2.9      # Auth0 RS256 verification (JWKS)
 httpx>=0.27             # JWKS fetch + PostgREST calls + TestClient
+python-multipart>=0.0.9 # multipart/form-data for CV uploads
+pymupdf>=1.24           # CV text extraction, preferred (V2 parity)
+pypdf>=4.0              # CV text extraction, fallback (V2 parity)
+python-docx>=1.1        # DOCX text extraction (V2 parity)

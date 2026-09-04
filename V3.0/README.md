@@ -143,4 +143,37 @@ curl http://localhost:8001/api/health
 The Next.js dashboard shows the live wiring probe ("backend /api/health"
 badge); the backend URL is overridable with `NEXT_PUBLIC_API_URL`.
 
+## Slice 6 — Profile creation flow, exact V2 parity (CHG-014) — DONE & VERIFIED
+
+After signing in, the user creates their profile via one of two options,
+**exactly as in V2.0**:
+
+- **Road A — Manual:** the wizard walks through career stage → personal
+  identity (incl. the EU/EEA visa-sponsorship logic) → education →
+  experience → skills.
+- **Road B — AI-powered:** upload one or several CVs (PDF/DOCX); AIROS runs
+  Gemini extraction (V2's exact prompt, model fallback chain, JSON
+  cleaning/repair and skills/language post-processing) and pre-fills every
+  step.
+
+Components:
+
+- `ai/gateway.py` — the ONLY AI provider layer (DEC-005); the Gemini key is
+  read server-side only (ISS-004 solved, no `st.secrets`).
+- `services/api/cv_text.py` — V2 PDF (PyMuPDF→pypdf) + DOCX (python-docx
+  incl. tables/headers/footers) extraction.
+- `POST /api/profile/extract-cv` — extraction + originals saved to the local
+  protected uploads dir (metadata only in the DB, ISS-006).
+- `PUT /api/profile` — runs the **exact** migration `transform_profile()` and
+  upserts the caller's own `profiles` row with their own token (RLS holds).
+- Migration `0005_profile_meta.sql` — adds `profile_method` +
+  `onboarding_completed` so V2 onboarding metadata survives verbatim.
+- Next.js `/profile` wizard + a "Create your profile" CTA on the dashboard.
+
+```bash
+python3 -m pytest -q        # 100 tests (gateway + profile routes + existing)
+# one Supabase SQL Editor step before live use: run database/migrations/0005_profile_meta.sql
+# then add GEMINI_API_KEY to your server .env (free: https://aistudio.google.com/apikey)
+```
+
 
