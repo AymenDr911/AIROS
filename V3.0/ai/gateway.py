@@ -273,6 +273,12 @@ OUTPUT JSON SCHEMA (follow exactly):
   ],
   "technical_skills": [],
   "core_skills": [],
+  "skills_sections": [
+    {
+      "section_title": "",
+      "items": []
+    }
+  ],
   "languages": [
     {
       "language": "",
@@ -290,14 +296,20 @@ OUTPUT JSON SCHEMA (follow exactly):
 }
 
 CRITICAL RULES FOR SKILLS (MUST FOLLOW):
-- technical_skills and core_skills must come EXCLUSIVELY from a dedicated "Skills", "Technical Skills", "Competencies", "Expertise", "Key Skills" or similar section of the CV.
-- If no clear dedicated Skills section exists -> return empty arrays: "technical_skills": [] and "core_skills": [].
+- "skills_sections" is the PRIMARY output for skills. Preserve the EXACT section titles as they appear in the CV.
+- For each skills-related section in the CV (e.g., "Technical Skills", "Tools & Technologies", "Software", "Soft Skills", "Languages", "Core Competencies", "Key Skills", "Competencies", "Expertise"), create a separate entry in "skills_sections" with the original "section_title" and all "items" under that section.
+- Use the EXACT wording of section headers from the CV (e.g., if the CV has "Skills about using tools", use that exact string as the section_title).
+- Each item should be a simple string (the skill/tool/technology name as written in the CV).
+- Do NOT merge all skills into one flat list — keep them grouped by their original section.
+- "technical_skills" and "core_skills" should be DERIVED from "skills_sections":
+  - "technical_skills" = all items from sections that are technical/hard-skill related (Technical Skills, Tools, Software, Programming Languages, Databases, Cloud & DevOps, etc.)
+  - "core_skills" = all items from sections that are soft-skill related (Soft Skills, Core Competencies, Interpersonal Skills, etc.)
+- If a section doesn't clearly fit either category, include it in BOTH the appropriate derived array and keep it in skills_sections.
+- If no clear dedicated Skills section exists -> return empty arrays and empty skills_sections.
 - NEVER invent, infer, deduce, or create skills from experience, projects, summary, education, or job descriptions.
 - NEVER add skills that are not written as a skill in the Skills section.
-- technical_skills = only hard/technical items that appear in the Skills section.
-- core_skills = only soft/transferable skills that appear in the Skills section.
 - Keep the exact wording used in the CV (do not rephrase or expand).
-- Both lists must be flat arrays of simple strings. No levels, no categories, no duplicates.
+- No duplicates within a section.
 
 OTHER RULES:
 - Return ONLY valid JSON.
@@ -379,6 +391,64 @@ def _process_extraction(response: str) -> Dict[str, Any]:
         if not isinstance(data["core_skills"], list):
             data["core_skills"] = []
 
+        # ---------- Safe defaults for skills_sections (V3: preserve CV section structure) ----------
+        data.setdefault("skills_sections", [])
+        if not isinstance(data.get("skills_sections"), list):
+            data["skills_sections"] = []
+        # Normalize each section: ensure section_title and items exist
+        normalized_sections = []
+        for section in data["skills_sections"]:
+            if not isinstance(section, dict):
+                continue
+            title = str(section.get("section_title", "")).strip()
+            items = section.get("items", [])
+            if not isinstance(items, list):
+                continue
+            # Clean items: keep only non-empty strings (coerce {"name": ...}
+            # style objects that Gemini sometimes emits for items)
+            clean_items = []
+            for item in items:
+                if isinstance(item, dict):
+                    item = item.get("name") or item.get("skill") or item.get("title") or ""
+                if isinstance(item, str) and item.strip():
+                    clean_items.append(item.strip())
+            if title and clean_items:
+                normalized_sections.append({"section_title": title, "items": clean_items})
+        data["skills_sections"] = normalized_sections
+
+        # ---------- Derive flat arrays from skills_sections when Gemini left them empty ----------
+        # Per-array derivation: if Gemini populated skills_sections but left one
+        # of the flat arrays empty, that array is still recovered from the
+        # section structure (technical vs soft-skill classification).
+        if data["skills_sections"]:
+            tech_derived = []
+            core_derived = []
+            for section in data["skills_sections"]:
+                title_lower = section["section_title"].lower()
+                items = section["items"]
+                # Determine if section is technical or soft-skill related
+                is_technical = any(kw in title_lower for kw in [
+                    "technical", "tool", "software", "programming", "language",
+                    "database", "cloud", "devops", "framework", "platform",
+                    "infrastructure", "environment", "stack", "ide", "editor",
+                ])
+                is_soft = any(kw in title_lower for kw in [
+                    "soft", "core", "interpersonal", "personal", "behavioral",
+                    "competenc", "communication", "leadership", "management",
+                ])
+                if is_technical:
+                    tech_derived.extend(items)
+                elif is_soft:
+                    core_derived.extend(items)
+                else:
+                    # Ambiguous section: include in both
+                    tech_derived.extend(items)
+                    core_derived.extend(items)
+            if not data["technical_skills"]:
+                data["technical_skills"] = tech_derived
+            if not data["core_skills"]:
+                data["core_skills"] = core_derived
+
         # ---------- Clean skill lists ----------
         def _clean_list(items):
             seen = set()
@@ -393,6 +463,23 @@ def _process_extraction(response: str) -> Dict[str, Any]:
 
         data["technical_skills"] = _clean_list(data["technical_skills"])
         data["core_skills"] = _clean_list(data["core_skills"])
+
+        # ---------- Guarantee classified output: synthesize sections ----------
+        # If Gemini returned flat lists but no usable skills_sections, build
+        # the section grouping from the flat arrays so the wizard/profile ALWAYS
+        # shows skills classified by category (V3 requirement - no unclassified
+        # skill dumps).
+        if not data["skills_sections"] and (data["technical_skills"] or data["core_skills"]):
+            synthesized = []
+            if data["technical_skills"]:
+                synthesized.append(
+                    {"section_title": "Technical Skills", "items": list(data["technical_skills"])}
+                )
+            if data["core_skills"]:
+                synthesized.append(
+                    {"section_title": "Soft Skills", "items": list(data["core_skills"])}
+                )
+            data["skills_sections"] = synthesized
 
         # ---------- Map to structured skills for the UI ----------
         technical = []
@@ -413,6 +500,7 @@ def _process_extraction(response: str) -> Dict[str, Any]:
             "methodologies": methodologies,
             "tools": tools,
             "core": data["core_skills"],          # keep core skills accessible
+            "sections": data["skills_sections"],  # V3: preserve CV section structure
         }
 
         # ---------- Filter programming languages out of spoken languages ----------

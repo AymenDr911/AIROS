@@ -92,6 +92,68 @@ def test_process_recovered_truncated_json_keeps_defaults():
     assert isinstance(data, dict)
 
 
+def test_process_normalizes_skills_sections_and_derives_flats():
+    # V3: skills_sections is the primary skills output. Normalization strips
+    # blank titles/items and drops invalid entries; the flat arrays are
+    # derived from the sections when Gemini left them empty.
+    raw = json.dumps({
+        "skills_sections": [
+            {"section_title": " Tools & Technologies ", "items": ["Python", " ", "Docker"]},
+            {"section_title": "Soft Skills", "items": ["Leadership"]},
+            {"section_title": "", "items": ["Ignored - no title"]},
+            {"section_title": "Empty section", "items": []},
+            {"not_a_section": True},
+        ],
+        "languages": [],
+    })
+    data = _process_extraction(raw)
+    assert data["skills"]["sections"] == [
+        {"section_title": "Tools & Technologies", "items": ["Python", "Docker"]},
+        {"section_title": "Soft Skills", "items": ["Leadership"]},
+    ]
+    # flat arrays derived from the sections
+    assert data["technical_skills"] == ["Python", "Docker"]
+    assert data["core_skills"] == ["Leadership"]
+    assert data["skills"]["technical"] == ["Python", "Docker"]
+    assert data["skills"]["core"] == ["Leadership"]
+
+
+def test_process_coerces_section_items_objects():
+    # Gemini sometimes emits items as objects ({"name": ...}) - coerce, never drop
+    raw = json.dumps({
+        "skills_sections": [
+            {"section_title": "Tools", "items": [{"name": "Python"}, {"skill": "Docker"}, {"x": 1}, 42, " "]},
+        ],
+    })
+    data = _process_extraction(raw)
+    assert data["skills"]["sections"] == [{"section_title": "Tools", "items": ["Python", "Docker"]}]
+
+
+def test_process_derives_missing_core_from_soft_sections():
+    # per-array derivation: flats partially present -> only the empty one is derived
+    raw = json.dumps({
+        "technical_skills": ["Python"],
+        "skills_sections": [{"section_title": "Soft Skills", "items": ["Leadership"]}],
+    })
+    data = _process_extraction(raw)
+    assert data["technical_skills"] == ["Python"]      # kept, not overwritten
+    assert data["core_skills"] == ["Leadership"]       # derived from the soft section
+
+
+def test_process_synthesizes_sections_when_gemini_returns_flats_only():
+    # No usable skills_sections -> sections built from the flat arrays so the
+    # output is always classified (no unclassified skill dumps)
+    raw = json.dumps({
+        "technical_skills": ["Python", "Docker"],
+        "core_skills": ["Communication"],
+    })
+    data = _process_extraction(raw)
+    assert data["skills"]["sections"] == [
+        {"section_title": "Technical Skills", "items": ["Python", "Docker"]},
+        {"section_title": "Soft Skills", "items": ["Communication"]},
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Model chain + error matrix (V2 parity)
 # ---------------------------------------------------------------------------

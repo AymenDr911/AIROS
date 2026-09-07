@@ -88,6 +88,44 @@ def _save_original_cvs(files: list[tuple[str, bytes]], owner_sub: str) -> list[d
     return saved_files
 
 
+def _existing_cv_count(token: str, account_id: str) -> int:
+    """Read the caller's current ``original_cv_count`` via PostgREST with the
+    caller's token (RLS-scoped). Best-effort: 0 on any failure."""
+    import httpx
+
+    settings = get_settings()
+    try:
+        resp = httpx.get(
+            f"{settings.supabase_url}/rest/v1/profiles",
+            params={"account_id": f"eq.{account_id}", "select": "original_cv_count"},
+            headers={
+                "apikey": settings.supabase_publishable_key,
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            rows = resp.json()
+            if isinstance(rows, list) and rows:
+                return int(rows[0].get("original_cv_count") or 0)
+    except Exception:
+        pass
+    return 0
+
+
+def _disk_cv_count(owner_sub: str) -> int:
+    """Dev-local fallback (pre-DEC-012): count saved originals for this
+    account in the protected uploads dir. Returns 0 if the store is absent.
+    TO REMOVE when the document store slice (DEC-012) lands."""
+    safe_dir = "".join(ch if ch.isalnum() or ch in "|-" else "_" for ch in owner_sub)
+    upload_dir = _uploads_root() / safe_dir
+    try:
+        return sum(1 for p in upload_dir.glob("original_cv_*") if p.is_file())
+    except OSError:
+        return 0
+
+
 def _account_id(token: str) -> str:
     """Resolve the caller's own accounts.id via PostgREST (RLS-scoped)."""
     import httpx
@@ -212,7 +250,39 @@ def save_profile(
     # EXACT migration transform (skills reclassify, evidence rule, identity map)
     v3_profile = transform_profile(v2_profile)
 
+    # V3 extension (CHG-014 follow-up): preserve the AI-extracted CV skills
+    # grouping ("skills_sections" from the gateway) verbatim on top of the
+    # taxonomy reclassification. The migration transform itself stays EXACT -
+    # V2 snapshots carry no "sections", so migration output is unchanged.
+    raw_skills = v2_profile.get("skills")
+    raw_sections = raw_skills.get("sections") if isinstance(raw_skills, dict) else None
+    if isinstance(raw_sections, list) and raw_sections:
+        cleaned_sections = []
+        for sec in raw_sections:
+            if not isinstance(sec, dict):
+                continue
+            title = str(sec.get("section_title", "")).strip()
+            items = [i.strip() for i in sec.get("items", []) if isinstance(i, str) and i.strip()]
+            if title and items:
+                cleaned_sections.append({"section_title": title, "items": items})
+        if cleaned_sections:
+            v3_profile["skills"]["sections"] = cleaned_sections
+
     account_id = _account_id(token)
+
+    # Edit-save protection: the wizard cannot replay the original CV upload
+    # metadata on edits (ISS-006: bytes/metadata live outside the DB - the row
+    # keeps only the count), so an update arriving WITHOUT saved_files must
+    # not wipe the stored original_cv_count back to 0.
+    if not v2_profile["original_cv_files"]:
+        existing = _existing_cv_count(token, account_id)
+        if existing > 0:
+            v3_profile["original_cv_count"] = existing
+        else:
+            disk = _disk_cv_count(str(claims["sub"]))
+            if disk > 0:
+                v3_profile["original_cv_count"] = disk
+
     row = {"account_id": account_id, **v3_profile}
 
     # Upsert the caller's own profiles row (RLS: account_id must be theirs)

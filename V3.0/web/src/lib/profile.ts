@@ -88,6 +88,7 @@ export type SkillsDict = {
   methodologies: string[];
   tools: string[];
   core: string[];
+  sections?: { section_title: string; items: string[] }[];
 };
 
 /* The draft the onboarding wizard carries (V2 session_state equivalent). */
@@ -146,15 +147,21 @@ export type ExtractResult = {
   detail?: string;
 };
 
-/** POST /api/profile/extract-cv - Road B (V2 extract_rich_profile). */
+/** POST /api/profile/extract-cv - Road B (V2 extract_rich_profile).
+    The call is wrapped in a 90s abort timeout so a hung connection can
+    never leave the wizard stuck on "AIROS is analyzing..." with the button
+    disabled forever (real-user bug report). */
 export async function extractCv(files: File[], token: string): Promise<ExtractResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
   try {
     const resp = await fetch(apiUrl() + "/api/profile/extract-cv", {
       method: "POST",
       headers: { Authorization: "Bearer " + token },
       body: form,
+      signal: controller.signal,
     });
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) {
@@ -163,7 +170,12 @@ export async function extractCv(files: File[], token: string): Promise<ExtractRe
     const { ok: _unused, ...rest } = body as ExtractResult;
     return { ok: true, ...rest };
   } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      return { ok: false, detail: "Extraction timed out. Please try again or use Manual Mode." };
+    }
     return { ok: false, detail: "backend unreachable: " + (e as Error).message };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

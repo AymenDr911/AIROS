@@ -15,12 +15,13 @@ export const AIROS = {
   supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? defaults.supabaseKey,
 };
 
-/** Post-login destination. Overridable via NEXT_PUBLIC_APP_REDIRECT; by
- * default derived from the current origin so dev/prod ports just work.
- * Must be registered as an Allowed Callback + Logout URL in Auth0. */
+/** Post-login destination. Overridable via NEXT_PUBLIC_APP_REDIRECT.
+ * MUST exactly match the Allowed Callback + Logout URLs registered in Auth0.
+ * Hardcoded to localhost (not window.location.origin) so it matches Auth0
+ * regardless of whether the user accesses the site via 127.0.0.1 or localhost.
+ * Verified: Auth0 returns 403 for 127.0.0.1 but 302 for localhost. */
 export function redirectUri(): string {
   if (process.env.NEXT_PUBLIC_APP_REDIRECT) return process.env.NEXT_PUBLIC_APP_REDIRECT;
-  if (typeof window !== "undefined") return window.location.origin + "/app";
   return "http://localhost:3000/app";
 }
 

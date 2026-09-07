@@ -43,7 +43,8 @@ V2_PAYLOAD = {
          "end_date": "", "currently_working": True, "description": "Built things"}
     ],
     "skills": {"technical": ["Python", "SQL"], "methodologies": ["Scrum"],
-               "tools": ["Odoo"], "core": ["Communication"]},
+               "tools": ["Odoo"], "core": ["Communication"],
+               "sections": [{"section_title": "Technical Skills", "items": ["Python", "SQL"]}]},
     "languages": [{"language": "French", "level": "C2"}],
     "certifications": [{"name": "PMP", "issuer": "PMI", "year": "2020"}],
     "profile_method": "ai",
@@ -241,8 +242,13 @@ def test_save_profile_runs_exact_migration_transform(client, rsa_material, monke
         "onboarding_completed": True,
         "original_cv_files": V2_PAYLOAD["saved_files"],
     })
+    # V3 router extension: the AI-extracted skills-section grouping survives
+    # verbatim on top of the exact transform output.
+    assert row["skills"]["sections"] == V2_PAYLOAD["skills"]["sections"]
+    row_skills_no_sections = {k: v for k, v in row["skills"].items() if k != "sections"}
     for key, value in expected.items():
-        assert row[key] == value, f"transform mismatch on {key}"
+        actual = row_skills_no_sections if key == "skills" else row[key]
+        assert actual == value, f"transform mismatch on {key}"
 
     # V2 manual identity keys survive (not dropped)
     assert row["identity"]["first_name"] == "Aymen"
@@ -260,6 +266,109 @@ def test_save_profile_runs_exact_migration_transform(client, rsa_material, monke
     # V2 onboarding metadata preserved
     assert row["profile_method"] == "ai"
     assert row["onboarding_completed"] is True
+
+
+def test_save_profile_preserves_skills_sections_and_cleans_them(client, rsa_material, monkeypatch):
+    import services.api.routers.profile as profile_router
+
+    calls: dict = {}
+    monkeypatch.setattr(profile_router, "_account_id", lambda token: "acc-uuid-1")
+    _stub_postgrest(monkeypatch, calls)
+
+    token = mint_token(rsa_material[0])
+    # Malformed sections (non-dict entries, blank titles, blank/non-string
+    # items) are dropped; valid ones keep their title/items verbatim.
+    messy = dict(V2_PAYLOAD, skills={
+        "technical": ["Python"],
+        "sections": [
+            "garbage",
+            {"section_title": "   ", "items": ["Ignored"]},
+            {"section_title": " Tools ", "items": ["Python", "  ", 42]},
+            {"section_title": "Soft Skills", "items": ["Leadership"]},
+        ],
+    })
+    resp = client.put("/api/profile", json=messy, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    assert calls["json"]["skills"]["sections"] == [
+        {"section_title": "Tools", "items": ["Python"]},
+        {"section_title": "Soft Skills", "items": ["Leadership"]},
+    ]
+
+
+def test_save_profile_without_sections_has_no_sections_key(client, rsa_material, monkeypatch):
+    import services.api.routers.profile as profile_router
+
+    calls: dict = {}
+    monkeypatch.setattr(profile_router, "_account_id", lambda token: "acc-uuid-1")
+    _stub_postgrest(monkeypatch, calls)
+
+    token = mint_token(rsa_material[0])
+    no_sections = dict(V2_PAYLOAD, skills={"technical": ["Python"], "core": ["Teamwork"]})
+    resp = client.put("/api/profile", json=no_sections, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    assert "sections" not in calls["json"]["skills"]
+
+
+def test_save_profile_edit_without_saved_files_preserves_cv_count(client, rsa_material, monkeypatch, tmp_path):
+    import services.api.routers.profile as profile_router
+
+    calls: dict = {}
+    monkeypatch.setattr(profile_router, "_account_id", lambda token: "acc-uuid-1")
+    _stub_postgrest(monkeypatch, calls)
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        assert params["select"] == "original_cv_count"
+        return _FakeResp(200, [{"original_cv_count": 2}])
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    token = mint_token(rsa_material[0])
+    edit_payload = dict(V2_PAYLOAD, saved_files=[])
+    resp = client.put("/api/profile", json=edit_payload, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    # The edit (no re-upload possible in the wizard) must NOT wipe the count.
+    assert calls["json"]["original_cv_count"] == 2
+
+
+def test_save_profile_edit_recovers_cv_count_from_local_uploads(client, rsa_material, monkeypatch, tmp_path):
+    import services.api.routers.profile as profile_router
+
+    calls: dict = {}
+    monkeypatch.setattr(profile_router, "_account_id", lambda token: "acc-uuid-1")
+    _stub_postgrest(monkeypatch, calls)
+
+    # DB row has 0 (already wiped); dev-local uploads still hold 1 original.
+    monkeypatch.setattr(httpx, "get", lambda url, params=None, headers=None, timeout=None: _FakeResp(200, [{"original_cv_count": 0}]))
+    monkeypatch.setattr(profile_router, "_uploads_root", lambda: tmp_path)
+    saved_dir = tmp_path / "auth0|testuser"
+    saved_dir.mkdir(parents=True)
+    (saved_dir / "original_cv_1.pdf").write_bytes(b"%PDF-")
+    (saved_dir / "original_cv_2.pdf").write_bytes(b"%PDF-")  # + a stray non-CV file must not count
+    (saved_dir / "notes.txt").write_bytes(b"x")
+
+    token = mint_token(rsa_material[0])
+    edit_payload = dict(V2_PAYLOAD, saved_files=[])
+    resp = client.put("/api/profile", json=edit_payload, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    assert calls["json"]["original_cv_count"] == 2
+
+
+def test_save_profile_first_save_without_cvs_keeps_zero_count(client, rsa_material, monkeypatch, tmp_path):
+    import services.api.routers.profile as profile_router
+
+    calls: dict = {}
+    monkeypatch.setattr(profile_router, "_account_id", lambda token: "acc-uuid-1")
+    _stub_postgrest(monkeypatch, calls)
+
+    # No existing row, no local uploads -> count stays 0 (honest).
+    monkeypatch.setattr(httpx, "get", lambda url, params=None, headers=None, timeout=None: _FakeResp(200, []))
+    monkeypatch.setattr(profile_router, "_uploads_root", lambda: tmp_path / "empty")
+
+    token = mint_token(rsa_material[0])
+    manual = dict(V2_PAYLOAD, saved_files=[])
+    resp = client.put("/api/profile", json=manual, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200, resp.text
+    assert calls["json"]["original_cv_count"] == 0
 
 
 def test_save_profile_rejects_unknown_career_stage(client, rsa_material, monkeypatch):

@@ -20,6 +20,7 @@ import {
   providerLabel,
 } from "@/lib/airos";
 import ConnectionProbe from "@/components/ConnectionProbe";
+import Sidebar from "@/components/Sidebar";
 import {
   fetchTable,
   type AccountRow,
@@ -116,6 +117,16 @@ export default function AppPage() {
           const bundle = await loadDashboard(c);
           if (cancelled) return;
           setData(bundle);
+          // Auto-redirect brand-new users (no profile yet) to profile creation.
+          // A FAILED read is NOT "no profile": a transient error or expired
+          // token must never bounce the user into the wizard (the dashboard
+          // shows the LoadError pane instead).
+          if (bundle.profile.rows.length === 0 && !bundle.profile.error) {
+            if (typeof window !== "undefined") {
+              window.location.href = "/profile";
+            }
+            return;
+          }
         } catch (e) {
           if (cancelled) return;
           setData({
@@ -215,7 +226,9 @@ export default function AppPage() {
     );
 
   return (
-    <div>
+    <div className="flex min-h-[calc(100vh-0px)]">
+      <Sidebar />
+      <div className="flex-1 p-6">
       <div className="card">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="w-11 h-11 rounded-full bg-brand text-white flex items-center justify-center font-bold text-lg">
@@ -263,6 +276,7 @@ export default function AppPage() {
       {tab === "applications" && <ApplicationsPane apps={data?.applications} />}
       {tab === "documents" && <DocumentsPane docs={data?.documents} />}
       {tab === "ats" && <AtsPane apps={data?.applications} />}
+      </div>
     </div>
   );
 }

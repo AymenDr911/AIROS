@@ -26,6 +26,8 @@ export type ProfileRow = {
   certifications: unknown;
   strong_evidence: boolean;
   original_cv_count: number;
+  profile_method?: string;
+  onboarding_completed?: boolean;
   updated_at: string;
 };
 

@@ -8,7 +8,7 @@
      experience    -> step "experience"      (list + AI prefill, achievements)
      skills        -> step "skills"          (3 comma inputs + AI prefill)
    Persistence goes through PUT /api/profile (exact migration transform). */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AUTH_PROBE_TIMEOUT_MS,
@@ -20,6 +20,7 @@ import {
   withTimeout,
 } from "@/lib/airos";
 import ConnectionProbe from "@/components/ConnectionProbe";
+import Sidebar from "@/components/Sidebar";
 import {
   CAREER_STAGES,
   EDUCATION_STATUSES,
@@ -34,14 +35,18 @@ import {
   type EducationEntry,
   type ExperienceEntry,
 } from "@/lib/profile";
+import { fetchTable, type ProfileRow } from "@/lib/data";
 
 type Step = "choice" | "career_stage" | "identity" | "education" | "experience" | "skills" | "done";
+type Mode = "view" | "create" | "edit";
 
 export default function ProfilePage() {
-  const [phase, setPhase] = useState<"loading" | "signedout" | "wizard" | "error">("loading");
+  const [phase, setPhase] = useState<"loading" | "signedout" | "wizard" | "error" | "view">("loading");
+  const [mode, setMode] = useState<Mode>("create");
   const [token, setToken] = useState("");
   const [step, setStep] = useState<Step>("choice");
   const [draft, setDraft] = useState<ProfileDraft>(emptyDraft());
+  const [existingProfile, setExistingProfile] = useState<ProfileRow | null>(null);
   const [rich, setRich] = useState<ExtractResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -69,7 +74,19 @@ export default function ProfilePage() {
         const claims = await c.getIdTokenClaims();
         if (cancelled) return;
         setToken(claims?.__raw ?? "");
-        setPhase("wizard");
+        // Fetch existing profile to determine mode
+        const profiles = await fetchTable<ProfileRow>(c, "profiles");
+        if (cancelled) return;
+        if (profiles.rows.length > 0) {
+          // Existing profile → view mode
+          setExistingProfile(profiles.rows[0]);
+          setMode("view");
+          setPhase("view");
+        } else {
+          // No profile → creation wizard
+          setMode("create");
+          setPhase("wizard");
+        }
       } catch (e) {
         if (!cancelled) {
           const msg = (e as Error)?.message ?? "Unexpected error";
@@ -166,13 +183,76 @@ export default function ProfilePage() {
     );
   }
 
+  // ---- Read-only view mode (existing profile) ----
+  if (phase === "view") {
+    return (
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex-1 p-6">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <h1 className="text-2xl font-bold m-0">My Profile</h1>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  if (existingProfile) {
+                    setDraft(profileRowToDraft(existingProfile));
+                  }
+                  setMode("edit");
+                  setPhase("wizard");
+                  // V2 parity: update starts at the CHOICE step - the system
+                  // asks HOW to update (a. edit manually / b. upload a new CV
+                  // for full AI re-extraction), never skips straight to a step.
+                  setStep("choice");
+                }}
+              >
+                Update
+              </button>
+              <Link href="/app" className="btn-secondary">
+                Dashboard
+              </Link>
+            </div>
+          </div>
+          {existingProfile ? (
+            <ProfileReadOnly profile={existingProfile} />
+          ) : (
+            <div className="card mt-4">
+              <p className="text-muted">No profile data found.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <div className="flex-1 p-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold m-0">Build your professional identity</h1>
-        <Link href="/app" className="text-sm text-brand underline underline-offset-2">
-          ← Back to the app
-        </Link>
+        <h1 className="text-2xl font-bold m-0">
+          {mode === "edit" ? "Update your profile" : "Build your professional identity"}
+        </h1>
+        <div className="flex gap-2">
+          {mode === "edit" && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                // Cancel edit → go back to view mode
+                setMode("view");
+                setPhase("view");
+                setDraft(emptyDraft());
+              }}
+            >
+              Cancel
+            </button>
+          )}
+          <Link href="/app" className="text-sm text-brand underline underline-offset-2">
+            {mode === "edit" ? "" : "← Back to the app"}
+          </Link>
+        </div>
       </div>
       {err != null && (
         <p role="alert" className="text-danger text-sm mt-3">
@@ -184,9 +264,18 @@ export default function ProfilePage() {
       {step === "choice" && (
         <ChoiceStep
           busy={busy}
+          mode={mode === "edit" ? "edit" : "create"}
           onExtract={runExtraction}
           onManual={() => {
-            // V2 cv_choice.py Road A
+            if (mode === "edit") {
+              // a. Manual update: keep the pre-filled existing draft (already
+              // loaded by the Update button) so the user only reviews/checks
+              // the few fields he wants - no data loss, no re-upload needed.
+              setRich(null);
+              setStep("career_stage");
+              return;
+            }
+            // V2 cv_choice.py Road A (creation): start from a blank manual draft
             const manual = emptyDraft();
             manual.profile_method = "manual";
             setDraft(manual);
@@ -258,7 +347,23 @@ export default function ProfilePage() {
               setErr(res.detail ?? "Save failed. Please try again.");
               return;
             }
-            setStep("done");
+            // Refresh existing profile data and go to appropriate view
+            try {
+              const c = await auth0();
+              const profiles = await fetchTable<ProfileRow>(c, "profiles");
+              if (profiles.rows.length > 0) {
+                setExistingProfile(profiles.rows[0]);
+              }
+            } catch {
+              // Non-critical: fall back to done step
+            }
+            if (mode === "edit") {
+              // After editing → back to read-only view
+              setMode("view");
+              setPhase("view");
+            } else {
+              setStep("done");
+            }
           }}
         />
       )}
@@ -270,11 +375,24 @@ export default function ProfilePage() {
             Your professional identity is ready
             {draft.profile_method === "ai" ? " (built from your CV with AIROS extraction)" : ""}.
           </p>
-          <Link href="/app" className="btn-primary mt-6 inline-block">
-            Go to your dashboard
-          </Link>
+          <div className="flex justify-center gap-3 mt-6">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                setMode("view");
+                setPhase("view");
+              }}
+            >
+              View profile
+            </button>
+            <Link href="/app" className="btn-secondary">
+              Go to dashboard
+            </Link>
+          </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -286,19 +404,86 @@ function langsOf(data: Record<string, unknown>): { language: string; level: stri
   return (data["languages"] as { language: string; level: string }[]) ?? [];
 }
 
+/** Read a stored profiles.skills row into the wizard/display shape.
+    The save path stores the migration taxonomy keys (TECHNICAL / CORE /
+    MANAGEMENT / SOFT / OTHER) plus the preserved AI-extracted "sections";
+    manual/legacy rows may carry lowercase V2 keys. Normalize both here so
+    the view + edit flows never show empty skills. */
+function skillsFromRow(raw: unknown): {
+  technical: string[];
+  methodologies: string[];
+  tools: string[];
+  core: string[];
+  sections: { section_title: string; items: string[] }[];
+} {
+  const s = (raw ?? {}) as Record<string, unknown>;
+  const low = (k: string): string[] => (Array.isArray(s[k]) ? (s[k] as string[]) : []);
+  const upper = (k: string): string[] => (Array.isArray(s[k.toUpperCase()]) ? (s[k.toUpperCase()] as string[]) : []);
+  const technical = low("technical").length > 0 ? low("technical") : upper("technical");
+  const methodologies = low("methodologies").length > 0 ? low("methodologies") : upper("methodologies");
+  const tools = low("tools");
+  // SOFT items live in their own taxonomy bucket; group them with CORE for display/edit.
+  const core = low("core").length > 0 ? low("core") : [...upper("core"), ...upper("soft")];
+  let sections = Array.isArray(s["sections"])
+    ? (s["sections"] as { section_title: string; items: string[] }[])
+    : [];
+  // Legacy rows saved before sections existed: rebuild the editable section
+  // structure from the taxonomy lists so edit mode still shows every skill.
+  if (sections.length === 0 && (technical.length > 0 || methodologies.length > 0 || core.length > 0)) {
+    const rebuilt: { section_title: string; items: string[] }[] = [];
+    if (technical.length > 0) rebuilt.push({ section_title: "Technical Skills", items: [...technical] });
+    if (methodologies.length > 0) rebuilt.push({ section_title: "Methodologies & Management", items: [...methodologies] });
+    if (core.length > 0) rebuilt.push({ section_title: "Soft Skills", items: [...core] });
+    sections = rebuilt;
+  }
+  return { technical, methodologies, tools, core, sections };
+}
+
+/** Convert a stored ProfileRow into a ProfileDraft for editing. */
+function profileRowToDraft(row: ProfileRow): ProfileDraft {
+  const identity = (row.identity ?? {}) as Record<string, unknown>;
+  return {
+    career_stage: row.career_stage ?? "",
+    identity: {
+      first_name: String(identity["first_name"] ?? ""),
+      last_name: String(identity["last_name"] ?? ""),
+      country: String(identity["country"] ?? ""),
+      city: String(identity["city"] ?? ""),
+      nationality: String(identity["nationality"] ?? ""),
+      linkedin: String(identity["linkedin"] ?? ""),
+      github: String(identity["github"] ?? ""),
+      whatsapp: String(identity["whatsapp"] ?? ""),
+      languages: String(identity["languages"] ?? ""),
+      requires_visa_sponsorship: Boolean(identity["requires_visa_sponsorship"] ?? false),
+      visa_status: String(identity["visa_status"] ?? ""),
+      has_driver_license: Boolean(identity["has_driver_license"] ?? false),
+    },
+    education: Array.isArray(row.education) ? (row.education as EducationEntry[]) : [],
+    experience: Array.isArray(row.experience) ? (row.experience as ExperienceEntry[]) : [],
+    skills: skillsFromRow(row.skills),
+    languages: Array.isArray(row.languages) ? (row.languages as { language: string; level: string }[]) : [],
+    certifications: Array.isArray(row.certifications) ? (row.certifications as { name: string; issuer: string; year: string }[]) : [],
+    // preserve the original creation method on edits ("ai" stays "ai")
+    profile_method: (row as { profile_method?: string }).profile_method === "ai" ? "ai" : "manual",
+    onboarding_completed: true,
+    saved_files: [],
+  };
+}
+
 function applyRichData(
   next: ProfileDraft,
   data: Record<string, unknown>,
   langs: { language: string; level: string }[]
 ): void {
   // V2 cv_choice.py 2b: skills/languages/certifications survive early saves
-  const skills = data["skills"] as Record<string, string[]> | undefined;
+  const skills = data["skills"] as Record<string, unknown> | undefined;
   if (skills && typeof skills === "object") {
     next.skills = {
-      technical: skills["technical"] ?? [],
-      methodologies: skills["methodologies"] ?? [],
-      tools: skills["tools"] ?? [],
-      core: skills["core"] ?? [],
+      technical: (skills["technical"] as string[]) ?? [],
+      methodologies: (skills["methodologies"] as string[]) ?? [],
+      tools: (skills["tools"] as string[]) ?? [],
+      core: (skills["core"] as string[]) ?? [],
+      sections: (skills["sections"] as { section_title: string; items: string[] }[]) ?? [],
     };
   } else {
     const tech = (data["technical_skills"] as string[]) ?? [];
@@ -371,33 +556,242 @@ function applyRichData(
 }
 
 /* ---------------------------------------------------------------------------
+   Read-only profile view (display mode with Update button)
+--------------------------------------------------------------------------- */
+function ProfileReadOnly({ profile }: { profile: ProfileRow }) {
+  const identity = (profile.identity ?? {}) as Record<string, unknown>;
+  const { technical, tools, methodologies, core, sections } = skillsFromRow(profile.skills);
+  const education = Array.isArray(profile.education) ? (profile.education as Record<string, unknown>[]) : [];
+  const experience = Array.isArray(profile.experience) ? (profile.experience as Record<string, unknown>[]) : [];
+  const languages = Array.isArray(profile.languages) ? (profile.languages as Record<string, unknown>[]) : [];
+  const certifications = Array.isArray(profile.certifications)
+    ? (profile.certifications as Record<string, unknown>[])
+    : [];
+
+  const Field = ({ label, value }: { label: string; value: string | boolean | number | null }) => (
+    <div className="flex flex-col">
+      <span className="text-xs text-muted">{label}</span>
+      <span className="text-sm font-medium">{String(value || "—")}</span>
+    </div>
+  );
+
+  return (
+    <div className="mt-4">
+      <div className="card">
+        <h3 className="m-0 text-sm font-semibold">Personal Identity</h3>
+        <div className="grid gap-3 mt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+          <Field label="First name" value={String(identity["first_name"] ?? "")} />
+          <Field label="Last name" value={String(identity["last_name"] ?? "")} />
+          <Field label="Country" value={String(identity["country"] ?? "")} />
+          <Field label="City" value={String(identity["city"] ?? "")} />
+          <Field label="Nationality" value={String(identity["nationality"] ?? "")} />
+          <Field label="Phone" value={String(identity["whatsapp"] ?? "")} />
+          <Field label="LinkedIn" value={String(identity["linkedin"] ?? "")} />
+          <Field label="GitHub" value={String(identity["github"] ?? "")} />
+          <Field label="Visa sponsorship" value={Boolean(identity["requires_visa_sponsorship"])} />
+          <Field label="Driver license" value={Boolean(identity["has_driver_license"])} />
+        </div>
+      </div>
+
+      <div className="card mt-3">
+        <h3 className="m-0 text-sm font-semibold">Career Stage</h3>
+        <p className="text-sm mt-1 mb-0">{profile.career_stage || "—"}</p>
+      </div>
+
+      {sections.length > 0 ? (
+        <div className="card mt-3">
+          <h3 className="m-0 text-sm font-semibold">Skills (by category)</h3>
+          <div className="flex flex-col gap-2 mt-2">
+            {sections.map((sec) => (
+              <div key={sec.section_title}>
+                <p className="text-xs font-semibold text-brand mb-1">{sec.section_title}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {sec.items.map((item) => (
+                    <span key={item} className="text-xs px-2 py-0.5 rounded-full border border-border bg-surface">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="card mt-3">
+          <h3 className="m-0 text-sm font-semibold">Skills</h3>
+          <div className="flex flex-col gap-2 mt-2">
+            {technical.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-brand mb-1">Technical</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {technical.map((s) => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded-full border border-border bg-surface">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {tools.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-brand mb-1">Tools</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {tools.map((s) => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded-full border border-border bg-surface">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {methodologies.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-brand mb-1">Methodologies</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {methodologies.map((s) => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded-full border border-border bg-surface">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {core.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-brand mb-1">Core (soft)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {core.map((s) => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded-full border border-border bg-surface">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="card mt-3">
+        <h3 className="m-0 text-sm font-semibold">Education ({education.length})</h3>
+        {education.length > 0 ? (
+          <ul className="text-sm mt-2 mb-0 pl-5">
+            {education.map((e, i) => (
+              <li key={i}>
+                <b>{String(e["degree"] || "")}</b>
+                {e["field_of_study"] ? ` in ${String(e["field_of_study"])}` : ""}
+                {e["institution"] ? ` — ${String(e["institution"])}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted mt-1 mb-0">No education entries.</p>
+        )}
+      </div>
+
+      <div className="card mt-3">
+        <h3 className="m-0 text-sm font-semibold">Experience ({experience.length})</h3>
+        {experience.length > 0 ? (
+          <ul className="text-sm mt-2 mb-0 pl-5">
+            {experience.map((e, i) => (
+              <li key={i}>
+                <b>{String(e["title"] || e["role"] || "")}</b>
+                {e["company"] ? ` at ${String(e["company"])}` : ""}
+                {e["start_date"] ? ` (${String(e["start_date"])})` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted mt-1 mb-0">No experience entries.</p>
+        )}
+      </div>
+
+      <div className="card mt-3">
+        <h3 className="m-0 text-sm font-semibold">Languages ({languages.length})</h3>
+        {languages.length > 0 ? (
+          <ul className="text-sm mt-2 mb-0 pl-5">
+            {languages.map((l, i) => (
+              <li key={i}>
+                {String(l["language"] || "")}
+                {l["level"] ? ` — ${String(l["level"])}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted mt-1 mb-0">No languages listed.</p>
+        )}
+      </div>
+
+      <div className="card mt-3">
+        <h3 className="m-0 text-sm font-semibold">Certifications ({certifications.length})</h3>
+        {certifications.length > 0 ? (
+          <ul className="text-sm mt-2 mb-0 pl-5">
+            {certifications.map((c, i) => (
+              <li key={i}>
+                {String(c["name"] || "")}
+                {c["issuer"] ? ` — ${String(c["issuer"])}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted mt-1 mb-0">No certifications listed.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
    Step 1: choice (V2 cv_choice.py, verbatim copy)
 --------------------------------------------------------------------------- */
 function ChoiceStep({
   busy,
+  mode,
   onExtract,
   onManual,
 }: {
   busy: boolean;
+  mode: "create" | "edit";
   onExtract: (files: FileList | null) => void;
   onManual: () => void;
 }) {
   const [files, setFiles] = useState<FileList | null>(null);
+  const [pickError, setPickError] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+  const editing = mode === "edit";
+
+  const runExtract = () => {
+    if (files != null && files.length > 0) {
+      setPickError("");
+      onExtract(files);
+      return;
+    }
+    // Never a dead click: no CV picked yet -> open the picker and
+    // tell the user why (instead of a silently-disabled button).
+    setPickError("Please select at least one CV (PDF or DOCX) to extract.");
+    fileRef.current?.click();
+  };
   return (
     <div>
       <div className="card text-center mt-4">
-        <h2 className="text-xl font-bold m-0">Welcome to AIROS</h2>
-        <p className="text-muted mt-2 mb-0">How do you want to build your professional identity?</p>
-        <p className="text-xs text-muted mt-1 mb-0">You can always enrich or edit your profile later.</p>
+        <h2 className="text-xl font-bold m-0">
+          {editing ? "Update your profile" : "Welcome to AIROS"}
+        </h2>
+        <p className="text-muted mt-2 mb-0">
+          {editing
+            ? "How do you want to update your professional identity?"
+            : "How do you want to build your professional identity?"}
+        </p>
+        <p className="text-xs text-muted mt-1 mb-0">
+          {editing
+            ? "Edit your saved data manually, or upload a new/updated CV and AIROS will re-extract everything - exactly like profile creation."
+            : "You can always enrich or edit your profile later."}
+        </p>
       </div>
 
       <div className="grid gap-4 mt-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
         {/* Road A - Manual (V2 col1) */}
         <div className="card">
           <h3 className="m-0">✍️ Manual Mode</h3>
-          <p className="text-sm text-muted mt-2">You will fill all information yourself step by step.</p>
+          <p className="text-sm text-muted mt-2">
+            {editing
+              ? "Review and edit your saved profile step by step. All your current data is pre-filled - just change what you need."
+              : "You will fill all information yourself step by step."}
+          </p>
           <button type="button" onClick={onManual} className="btn-primary w-full mt-4" disabled={busy}>
-            Continue with Manual Mode
+            {editing ? "Edit my saved data manually" : "Continue with Manual Mode"}
           </button>
         </div>
 
@@ -405,14 +799,20 @@ function ChoiceStep({
         <div className="card">
           <h3 className="m-0">🤖 AI-Powered Mode</h3>
           <p className="text-sm text-muted mt-2">
-            Upload one or several CVs. AIROS will extract the data and pre-fill the forms.
+            {editing
+              ? "Upload your new/updated CV. AIROS will extract the data and re-pre-fill all sections for you."
+              : "Upload one or several CVs. AIROS will extract the data and pre-fill the forms."}
           </p>
           <input
             type="file"
             accept=".pdf,.docx"
             multiple
             disabled={busy}
-            onChange={(e) => setFiles(e.target.files)}
+            ref={fileRef}
+            onChange={(e) => {
+              setFiles(e.target.files);
+              setPickError("");
+            }}
             className="mt-3 text-sm"
           />
           {files != null && files.length > 0 && (
@@ -422,13 +822,18 @@ function ChoiceStep({
               ))}
             </ul>
           )}
+          {pickError && (
+            <p role="alert" className="text-danger text-sm mt-2 mb-0">
+              {pickError}
+            </p>
+          )}
           <button
             type="button"
-            onClick={() => onExtract(files)}
+            onClick={runExtract}
             className="btn-primary w-full mt-4"
-            disabled={busy || files == null || files.length === 0}
+            disabled={busy}
           >
-            Extract with AIROS & Continue
+            {editing ? "Extract from my new CV & Update" : "Extract with AIROS & Continue"}
           </button>
         </div>
       </div>
@@ -455,8 +860,13 @@ function CareerStageStep({
   onBack: () => void;
   onContinue: (stage: string) => void;
 }) {
-  const [selected, setSelected] = useState<string>(draft.career_stage);
   const normalized = normalizeCareerStage(suggestion);
+  // V2 parity: when the AI already suggested a career stage, pre-select it
+  // so "Continue" works immediately (a blank selection used to disable the
+  // button silently - "extract ok but stuck on Continue").
+  const [selected, setSelected] = useState<string>(() =>
+    normalized ?? draft.career_stage ?? ""
+  );
   return (
     <div className="card mt-4">
       <h2 className="text-lg font-bold m-0">Let&apos;s build your professional identity</h2>
@@ -864,8 +1274,52 @@ function ExperienceStep({
 }
 
 /* ---------------------------------------------------------------------------
-   Step 6: skills (V2 skills.py, verbatim - 3 comma-separated inputs)
+   Step 6: skills (V3 rework per product decision)
+   ALL skills gathered from the CV are shown exactly as found - grouped by
+   their original CV section, WITHOUT imposed classification. The list is
+   searchable and editable (remove / add). The taxonomy lists sent to the
+   backend are derived from the edited sections at save time so the V3
+   skill categories (and later ATS matching) stay populated.
 --------------------------------------------------------------------------- */
+type SkillSection = { section_title: string; items: string[] };
+
+const SOFT_TITLE_RE = /soft|core|interpersonal|personal|behavior|competenc|communication|leadership|management/i;
+const METHOD_ITEM_RE = /agile|scrum|kanban|saf[ei]|pmp|prince2?|itil|six\s?sigma|lean|waterfall|pmi|jira/i;
+
+/** Derive the backend taxonomy lists from the user-edited CV sections. */
+function flatsFromSections(sections: SkillSection[]): {
+  technical: string[];
+  methodologies: string[];
+  tools: string[];
+  core: string[];
+} {
+  const technical: string[] = [];
+  const methodologies: string[] = [];
+  const core: string[] = [];
+  const used = new Set<string>();
+  const push = (arr: string[], v: string) => {
+    const k = v.toLowerCase();
+    if (!k || used.has(k)) return;
+    used.add(k);
+    arr.push(v);
+  };
+  for (const sec of sections) {
+    const soft = SOFT_TITLE_RE.test(sec.section_title);
+    for (const raw of sec.items) {
+      const item = raw.trim();
+      if (!item) continue;
+      if (soft) {
+        push(core, item);
+      } else if (METHOD_ITEM_RE.test(item)) {
+        push(methodologies, item);
+      } else {
+        push(technical, item);
+      }
+    }
+  }
+  return { technical, methodologies, tools: [], core };
+}
+
 function SkillsStep({
   draft,
   busy,
@@ -877,49 +1331,134 @@ function SkillsStep({
   onBack: () => void;
   onFinish: (skills: ProfileDraft["skills"]) => void;
 }) {
-  const [tech, setTech] = useState(draft.skills.technical.join(", "));
-  const [method, setMethod] = useState(draft.skills.methodologies.join(", "));
-  const [tools, setTools] = useState(draft.skills.tools.join(", "));
+  const [secs, setSecs] = useState<SkillSection[]>(() => {
+    const fromDraft = draft.skills.sections ?? [];
+    return fromDraft.length > 0
+      ? fromDraft.map((s) => ({ section_title: s.section_title, items: [...s.items] }))
+      : [{ section_title: "Skills", items: [] }]; // manual mode: one editable group
+  });
+  const [query, setQuery] = useState("");
+  const [newSkill, setNewSkill] = useState("");
+  const [target, setTarget] = useState(0);
 
-  const parse = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+  const q = query.trim().toLowerCase();
+  const visible = secs
+    .map((s, idx) => ({ idx, ...s, items: q ? s.items.filter((i) => i.toLowerCase().includes(q)) : s.items }))
+    .filter((s) => !q || s.items.length > 0);
+  const total = secs.reduce((n, s) => n + s.items.length, 0);
+
+  const removeItem = (si: number, item: string) =>
+    setSecs((prev) => prev.map((s, i) => (i === si ? { ...s, items: s.items.filter((x) => x !== item) } : s)));
+
+  const addItem = () => {
+    const v = newSkill.trim();
+    if (!v) return;
+    setSecs((prev) =>
+      prev.map((s, i) =>
+        i === target && !s.items.some((x) => x.toLowerCase() === v.toLowerCase())
+          ? { ...s, items: [...s.items, v] }
+          : s
+      )
+    );
+    setNewSkill("");
+  };
 
   return (
     <div className="card mt-4">
       <h2 className="text-lg font-bold m-0">Skills &amp; Competencies</h2>
       <p className="text-sm text-muted mt-1">
-        Add your core professional skills, methodologies, and tools to optimize your ATS profile matching.
+        All skills found in your CV, kept exactly as written and grouped by their original
+        section. Search, remove, or add skills below - nothing is auto-classified.
       </p>
 
       <label className="block text-sm mt-4">
-        Technical Languages &amp; Frameworks (comma-separated)
-        <input className="input w-full mt-1" placeholder="e.g. Python, SQL, JavaScript" value={tech} onChange={(e) => setTech(e.target.value)} />
+        Search skills ({total} total)
+        <input
+          className="input w-full mt-1"
+          placeholder="Type to filter the list..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </label>
-      <label className="block text-sm mt-3">
-        Methodologies &amp; Management
-        <input className="input w-full mt-1" placeholder="e.g. Agile, Scrum, Kanban, PMP" value={method} onChange={(e) => setMethod(e.target.value)} />
-      </label>
-      <label className="block text-sm mt-3">
-        Enterprise Software &amp; Tools
-        <input className="input w-full mt-1" placeholder="e.g. Odoo, SAP, Jira, Confluence, Git" value={tools} onChange={(e) => setTools(e.target.value)} />
-      </label>
-      {draft.skills.core.length > 0 && (
-        <p className="text-xs text-muted mt-2 mb-0">
-          Core (soft) skills from your CV: {draft.skills.core.join(", ")}
-        </p>
-      )}
+
+      <div className="mt-3 rounded-lg border border-border bg-bg p-3">
+        {total === 0 ? (
+          <p className="text-sm text-muted m-0">No skills yet - add them below.</p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted m-0">No skills match &ldquo;{query}&rdquo;.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {visible.map((sec) => (
+              <div key={sec.idx}>
+                <p className="text-xs font-semibold text-brand mb-1">{sec.section_title}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {sec.items.map((item) => (
+                    <span
+                      key={item}
+                      className="text-xs px-2 py-0.5 rounded-full border border-border bg-surface inline-flex items-center gap-1"
+                    >
+                      {item}
+                      <button
+                        type="button"
+                        aria-label={"Remove " + item}
+                        onClick={() => removeItem(sec.idx, item)}
+                        className="text-muted hover:text-danger cursor-pointer leading-none"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2 mt-4 flex-wrap items-end">
+        <label className="block text-sm flex-1" style={{ minWidth: 200 }}>
+          Add a skill
+          <input
+            className="input w-full mt-1"
+            placeholder="e.g. Python, PMP, Communication"
+            value={newSkill}
+            onChange={(e) => setNewSkill(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addItem();
+              }
+            }}
+          />
+        </label>
+        <label className="block text-sm">
+          Into section
+          <select className="input w-full mt-1" value={target} onChange={(e) => setTarget(Number(e.target.value))}>
+            {secs.map((s, i) => (
+              <option key={i} value={i}>
+                {s.section_title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button type="button" onClick={addItem} className="btn-secondary">
+          + Add
+        </button>
+      </div>
 
       <div className="flex gap-2 mt-5">
         <button type="button" onClick={onBack} className="btn-secondary">← Back</button>
         <button
           type="button"
-          onClick={() =>
-            onFinish({
-              technical: parse(tech),
-              methodologies: parse(method),
-              tools: parse(tools),
-              core: draft.skills.core,
-            })
-          }
+          onClick={() => {
+            const cleaned = secs
+              .map((s) => ({
+                section_title: s.section_title.trim(),
+                items: s.items.map((x) => x.trim()).filter(Boolean),
+              }))
+              .filter((s) => s.section_title && s.items.length > 0);
+            onFinish({ ...flatsFromSections(cleaned), sections: cleaned });
+          }}
           className="btn-primary ml-auto"
           disabled={busy}
         >
