@@ -1,0 +1,54 @@
+Company: NovaForge Digital Solutions GmbH
+
+Location: On-site / Hybrid – Stockach, Baden-Württemberg, Germany (minimum 3 days/week in office)
+
+Job Title: Senior Program Manager – Enterprise Agile Delivery
+
+Department: Program Management Office (PMO)
+
+Employment Type: Full-time permanent
+
+Posted: 07 September 2026
+
+Reference: NF-PM-2026-112
+About NovaForge Digital Solutions GmbH
+
+NovaForge is a mid-sized German technology company specializing in enterprise SaaS and digital transformation programs for regulated industries in DACH and Western Europe. We deliver large-scale platforms for education, ERP, and property management with strong compliance and quality requirements.
+Position Overview
+
+We are seeking an experienced Senior Program Manager to lead complex, multi-year Agile programs involving cross-functional teams of 30+ people. The role requires deep expertise in enterprise delivery frameworks, strong German-language stakeholder management, and proven experience in regulated environments.
+Key Responsibilities
+
+Lead large-scale Agile programs (SAFe) with budgets exceeding €5 million and teams of 30–50 people across multiple workstreams.
+Act as Program Manager / Release Train Engineer, ensuring alignment between business, architecture, and delivery teams.
+Drive end-to-end delivery of enterprise SaaS and ERP platforms with strict compliance (GDPR, ISO, industry-specific regulations).
+Manage risks, dependencies, and financial tracking across multi-year roadmaps.
+Coach Scrum Masters and Product Owners, implement SAFe practices, and report to C-level stakeholders in German.
+Oversee CI/CD, cloud infrastructure (AWS), and quality gates in regulated environments.
+Build strong relationships with German enterprise clients and internal stakeholders.
+
+Required Qualifications & Experience
+
+Minimum 8 years of full-time professional experience as Program Manager or Senior Project Manager in corporate / enterprise IT environments.
+
+Hands-on experience with SAFe (Scaled Agile Framework) as Program Manager or RTE.
+Strong experience with cloud platforms, especially AWS, and enterprise CI/CD pipelines.
+Fluent German (B1 level minimum) – required for daily stakeholder communication, reporting, and client meetings. English is also required.
+Solid background in regulated industries (finance, healthcare, public sector, or similar) is highly preferred.
+Experience managing permanent full-time teams in Germany.
+
+Mandatory Certifications
+
+CSPO (Certified Scrum Product Owner) or equivalent advanced Scrum certification
+Cloud Practitioner
+ITIL Foundation (or higher)
+PMP is considered a plus but not sufficient alone
+
+
+HR Contact: Lena Richter
+
+Email: careers@novaforge-digital.de
+
+Phone: +49 7771 987654
+
+Address: NovaForge Digital Solutions GmbH, Innovationspark 12, 78333 Stockach, Baden-Württemberg, Germany

@@ -1,0 +1,29 @@
+Kill All Stale Node and Python Processes
+Terminal
+Paste this single command into any terminal window to wipe out any lingering servers or trapped ports from yesterday:
+
+Bash
+killall node uvicorn python3 2>/dev/null || true
+
+2
+Start the Backend Engine
+Terminal 1
+Navigate to your root project directory and launch FastAPI:
+
+
+cd '/Users/macbook/Documents/Careers folder/AIROS/V3.0'
+python3 -m uvicorn services.api.main:app --port 8001
+
+
+3 Start the Frontend Engine
+Terminal 2 (New Tab)
+Open a new terminal tab, navigate to the web directory, and start Next.js:
+
+cd '/Users/macbook/Documents/Careers folder/AIROS/V3.0/web'
+npm run dev
+
+
+Verification: Open 
+http://localhost:3000
+
+in a private/incognito browser window. Because the cleanup command ensures no old server states or hanging cache files interfere, your session will initialize cleanly.
