@@ -160,9 +160,60 @@ def test_process_synthesizes_sections_when_gemini_returns_flats_only():
 
 def test_model_chain_prefers_configured_order(monkeypatch):
     monkeypatch.setattr(gateway, "_list_supported_generate_models",
-                        lambda key: ["gemini-1.5-flash", "gemini-2.5-pro", "gemini-2.5-flash", "gemini-9.9-x"])
+                        lambda key: ["gemini-2.5-flash", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-9.9-x"])
     chain = gateway._resolve_model_chain("key")
-    assert chain == ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-9.9-x"]
+    assert chain == ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-2.5-flash", "gemini-9.9-x"]
+
+
+def test_call_gemini_skips_model_returning_empty_text(monkeypatch):
+    """A model that answers with a candidate but NO text (safety block,
+    non-text part) must be skipped - the next model in the chain is tried,
+    never a silent empty-string success (fake-100% root cause)."""
+    responses = [
+        # First model: 200 but parts without text (degenerate candidate)
+        {"candidates": [{"finishReason": "SAFETY",
+                         "content": {"parts": [{"inlineData": {"mime_type": "x", "data": "y"}}]}}]},
+        # Second model: proper text
+        {"candidates": [{"finishReason": "STOP",
+                         "content": {"parts": [{"text": '{"job_title": "Nurse"}'}]}}]},
+    ]
+    calls = {"n": 0}
+
+    class FakeResp:
+        def __init__(self, idx):
+            self.idx = idx
+
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self):
+            return json.dumps(responses[self.idx]).encode()
+
+    def fake_urlopen(request, timeout=25):
+        idx = calls["n"]
+        calls["n"] += 1
+        return FakeResp(idx)
+
+    monkeypatch.setattr(gateway, "_list_supported_generate_models", lambda key: [])
+    monkeypatch.setattr(gateway.urllib.request, "urlopen", fake_urlopen)
+
+    text = _call_gemini("prompt", api_key="key", json_mode=True, max_retries=1)
+    assert calls["n"] == 2                       # first model skipped, second used
+    assert json.loads(text)["job_title"] == "Nurse"
+
+
+def test_call_gemini_raises_when_all_models_return_empty_text(monkeypatch):
+    class FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self):
+            return json.dumps({"candidates": [{"finishReason": "SAFETY",
+                                               "content": {"parts": []}}]}).encode()
+
+    monkeypatch.setattr(gateway, "_list_supported_generate_models", lambda key: [])
+    monkeypatch.setattr(gateway.urllib.request, "urlopen", lambda req, timeout=25: FakeResp())
+
+    with pytest.raises(GatewayError, match="no usable text"):
+        _call_gemini("prompt", api_key="key", json_mode=True, max_retries=1)
 
 
 def test_model_chain_falls_back_when_listing_fails(monkeypatch):

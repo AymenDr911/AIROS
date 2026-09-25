@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import get_settings
 from .routers import me
 from .routers import profile as profile_router
+from .routers import ats as ats_router
+from .routers import applications as applications_router
 
 
 def create_app() -> FastAPI:
@@ -28,6 +30,8 @@ def create_app() -> FastAPI:
 
     app.include_router(me.router)
     app.include_router(profile_router.router)
+    app.include_router(ats_router.router)
+    app.include_router(applications_router.router)
 
     @app.get("/api/health")
     def health() -> dict:

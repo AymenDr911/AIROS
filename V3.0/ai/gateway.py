@@ -28,8 +28,10 @@ from typing import Any, Dict, List, Optional
 # 1. CORE GEMINI CONNECTOR (port of V2 cv_extractor.py, unchanged behavior)
 # ==============================================================================
 MODEL_FALLBACK_CHAIN = [
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
+    "gemini-3.6-flash",      # Proven working (2026); first choice for JD/CV parsing
+    "gemini-3.8-flash",      # Newest flash
+    "gemini-3.7-flash",      # Often 503-overloaded, kept as fallback
+    "gemini-flash-latest",   # Google alias, always points to a live flash model
 ]
 
 
@@ -37,7 +39,27 @@ class GatewayError(Exception):
     """Raised when the AI provider cannot complete a request (user-displayable)."""
 
 
+# Model-list cache (Option A / latency fix):
+# the /models listing is identical for every analyze request, so cache it
+# per API key for 1h instead of blocking every request on a 20s network hop.
+_MODEL_LIST_CACHE: dict = {}
+_MODEL_LIST_TTL_S = 3600.0
+
+
 def _list_supported_generate_models(api_key: str) -> List[str]:
+    """List generateContent-capable gemini models (cached 1h per key).
+
+    Option A (latency fix): the /models listing is identical for every
+    analyze request, so serving it from a 1h in-process cache removes one
+    blocking 20s network hop from every request after the first.
+    Failures still return [] so the static MODEL_FALLBACK_CHAIN is used.
+    """
+    import time as _time
+    cache_key = (api_key or "")[:16]
+    now = _time.monotonic()
+    hit = _MODEL_LIST_CACHE.get(cache_key)
+    if hit and (now - hit[0]) < _MODEL_LIST_TTL_S:
+        return list(hit[1])
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     request = urllib.request.Request(url, headers={"Content-Type": "application/json"}, method="GET")
     try:
@@ -53,6 +75,8 @@ def _list_supported_generate_models(api_key: str) -> List[str]:
                 short_name = name.split("models/")[-1]
                 if short_name.startswith("gemini"):
                     supported.append(short_name)
+            if supported:
+                _MODEL_LIST_CACHE[cache_key] = (now, list(supported))
             return supported
     except Exception:
         return []
@@ -69,9 +93,20 @@ def _resolve_model_chain(api_key: str) -> List[str]:
     return resolved
 
 
-def _call_gemini(prompt: str, api_key: str, json_mode: bool = False, max_retries: int = 2) -> str | None:
+def _clear_model_list_cache() -> None:
+    """Test helper: clear the Option A models-list cache."""
+    _MODEL_LIST_CACHE.clear()
+
+
+def _call_gemini(prompt: str, api_key: str, json_mode: bool = False, max_retries: int = 1) -> str | None:
     """V2 ``_call_gemini`` with the key injected (ISS-004) and GatewayError
-    instead of ``st.error``. Returns the model text or raises GatewayError."""
+    instead of ``st.error``. Returns the model text or raises GatewayError.
+
+    Option A (latency fix): per-model generate timeout 25s (was 45s) and
+    default max_retries=1 per model (was 2) so the worst-case chain
+    (4 models x 1 attempt x 25s) stays inside the 120s UI abort budget
+    instead of exceeding it (4 x 2 x 45s). First-model p95 stays ~7-15s.
+    """
     if not api_key:
         raise GatewayError(
             "GEMINI_API_KEY missing. Please add it to the .env file "
@@ -98,13 +133,22 @@ def _call_gemini(prompt: str, api_key: str, json_mode: bool = False, max_retries
             try:
                 req_data = json.dumps(payload).encode("utf-8")
                 request = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
-                with urllib.request.urlopen(request, timeout=45) as response:
+                with urllib.request.urlopen(request, timeout=25) as response:
                     result = json.loads(response.read().decode("utf-8"))
                     candidates = result.get("candidates", [])
                     if candidates and "content" in candidates[0]:
                         parts = candidates[0]["content"].get("parts", [])
-                        if parts:
-                            return parts[0].get("text", "")
+                        text = parts[0].get("text", "") if parts else ""
+                        if text and text.strip():
+                            return text
+                        # Candidate exists but carries no text (safety block,
+                        # non-text part, empty completion).  This model's
+                        # answer is unusable - record and try the next model
+                        # instead of silently returning "" (which used to be
+                        # parsed into an empty schema echo downstream).
+                        errors.append(f"Model '{model}' returned no usable text "
+                                      f"(finishReason={candidates[0].get('finishReason')})")
+                        break
                     errors.append(f"Model '{model}' returned no text candidates")
                     break
             except urllib.error.HTTPError as e:

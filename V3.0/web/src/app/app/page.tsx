@@ -28,6 +28,7 @@ import {
   type DocumentRow,
   type ProfileRow,
 } from "@/lib/data";
+import { setTrackedCount, useRunState } from "@/lib/workspace";
 
 type Phase = "loading" | "signedout" | "welcome" | "error";
 
@@ -155,6 +156,12 @@ export default function AppPage() {
     };
   }, [retryTick]);
 
+  // Mirror the loaded application count into the shared run state: that is what
+  // reveals/hides the ④ Job Tracking menu in the sidebar (on every page).
+  useEffect(() => {
+    if (data?.applications != null) setTrackedCount(data.applications.rows.length);
+  }, [data]);
+
   if (phase === "loading") {
     return (
       <div className="card text-center py-6">
@@ -227,7 +234,7 @@ export default function AppPage() {
 
   return (
     <div className="flex min-h-[calc(100vh-0px)]">
-      <Sidebar />
+      <Sidebar trackedCount={data?.applications.rows.length} />
       <div className="flex-1 p-6">
       <div className="card">
         <div className="flex items-center gap-3 flex-wrap">
@@ -366,6 +373,44 @@ function OverviewPane({ data }: { data: DataBundle | null }) {
 }
 
 function AtsPane({ apps }: { apps?: Load<ApplicationRow> }) {
+  // The shared run state: a passed analysis is what reveals the ② Application
+  // Workshop menu in the sidebar, so the dashboard offers the same hand-over.
+  const run = useRunState();
+  return (
+    <div className="mt-4">
+      <div className="card">
+        <h3 className="m-0 text-sm font-semibold">
+          ① Job Analyses - ATS &amp; compatibility engine
+        </h3>
+        <p className="text-sm text-muted mt-1">
+          Paste a job description: AIROS verifies it, scores it against your own CV/profile with the
+          deterministic engine, lists the full report and states the final decision. A passing offer
+          opens the Application Workshop.
+        </p>
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <Link href="/applications?stage=analyze" className="btn-primary inline-block">
+            Open ① Job Analyses →
+          </Link>
+          {run.pending != null && (
+            <Link href="/applications?stage=workshop" className="btn-secondary inline-block">
+              Open ② Application Workshop →
+            </Link>
+          )}
+        </div>
+        {run.pending != null && (
+          <p className="text-xs text-ok mt-2 mb-0">
+            A passing analysis is waiting in the Application Workshop:{" "}
+            {run.pending.analysis.ats_score}% - {run.pending.analysis.decision}.
+          </p>
+        )}
+      </div>
+      <HistoricalAts apps={apps} />
+    </div>
+  );
+}
+
+
+function HistoricalAts({ apps }: { apps?: Load<ApplicationRow> }) {
   if (apps == null) {
     return (
       <div className="card mt-4">
